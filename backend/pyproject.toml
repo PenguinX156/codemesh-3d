@@ -1,0 +1,52 @@
+[project]
+name = "codemesh"
+version = "0.1.0"
+description = "CodeMesh 3D backend: video/photos -> game-ready 3D assets"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "python-multipart>=0.0.9",
+    "pydantic>=2.7",
+    "httpx>=0.27",
+    "openai>=1.50",
+    "python-dotenv>=1.0",
+    "numpy>=1.26,<2.3",
+    "scipy>=1.13",
+    "opencv-python-headless>=4.10",
+    "av>=12",
+    "pillow>=10.4",
+    "open3d>=0.19",
+    "trimesh>=4.4",
+    "xatlas>=0.0.9",
+    "huggingface-hub>=0.25",
+]
+
+[project.optional-dependencies]
+# CPU/CUDA reference engine. CPU wheels come from the PyTorch CPU index (see [tool.uv]).
+torch = ["torch>=2.5", "torchvision>=0.20"]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv]
+package = true
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["codemesh"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

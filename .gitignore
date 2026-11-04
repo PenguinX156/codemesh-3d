@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+dist/
+third_party/
+models/
+data/
+jobs/
+bench/**/out/
+*.gguf
