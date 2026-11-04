@@ -8,6 +8,6 @@ dist/
 third_party/
 models/
 data/
-jobs/
+/jobs/
 bench/**/out/
 *.gguf
