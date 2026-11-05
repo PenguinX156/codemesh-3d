@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -12,13 +13,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from codemesh import __version__, config
 from codemesh.api.routes import router
 from codemesh.api.uploads import DEFAULT_MAX_UPLOAD_BYTES
+from codemesh.engines import factory
 from codemesh.jobs.runner import Runner
 from codemesh.jobs.store import JobStore
 from codemesh.pipeline import ACTIONS
 
 
-def create_app(jobs_dir: Path | None = None, max_upload_bytes: int = DEFAULT_MAX_UPLOAD_BYTES) -> FastAPI:
-    """Build the app. Store and worker start in the lifespan (i.e. when the server starts)."""
+def _warm_if_rocm() -> None:
+    if factory.resolved_engine() == "rocm":  # may probe modal (~10 s) first, hence the thread
+        factory.warmup()
+
+
+def create_app(jobs_dir: Path | None = None, max_upload_bytes: int = DEFAULT_MAX_UPLOAD_BYTES,
+               warm_engine: bool = False) -> FastAPI:
+    """Build the app. Store and worker start in the lifespan (i.e. when the server starts).
+
+    warm_engine: at startup, load the local ROCm engine in a background thread (never in tests)."""
     jobs_dir = Path(jobs_dir or config.JOBS_DIR)
 
     @asynccontextmanager
@@ -29,6 +39,8 @@ def create_app(jobs_dir: Path | None = None, max_upload_bytes: int = DEFAULT_MAX
         runner = Runner(store, jobs_dir, ACTIONS)
         runner.start()
         app.state.store, app.state.runner = store, runner
+        if warm_engine:
+            threading.Thread(target=_warm_if_rocm, name="engine-resolve", daemon=True).start()
         try:
             yield
         finally:
@@ -48,4 +60,4 @@ def create_app(jobs_dir: Path | None = None, max_upload_bytes: int = DEFAULT_MAX
     return app
 
 
-app = create_app()
+app = create_app(warm_engine=True)

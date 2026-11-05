@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createApi } from './api.ts'
+import { pickDefaultFrame } from './frames.ts'
 import { pollJob } from './jobPoller.ts'
 import { parseTriangleBudget } from './presets.ts'
 import { compareArtifacts, summarize } from './summary.ts'
@@ -67,4 +68,13 @@ test('summarize reads headline metrics from stages and the scale source from set
   const s = summarize(j)
   assert.deepEqual([s.iou, s.psnr, s.ssim, s.triangles, s.engine, s.measuredScale], [0.9, 24, null, 100, 'torch', true])
   assert.deepEqual(compareArtifacts(j).map(([k]) => k), ['compare_2', 'compare_10'])
+})
+
+test('pickDefaultFrame prefers best_frame, else sharpest of the middle 60%', () => {
+  const sharp = [900, 10, 20, 50, 30, 40, 20, 10, 15, 800]
+  const frames = sharp.map((s, i) => ({ index: i + 100, url: '', thumb_url: '', sharpness: s, width: 1, height: 1 }))
+  assert.equal(pickDefaultFrame(frames), 3)
+  assert.equal(pickDefaultFrame(frames, 107), 7)
+  assert.equal(pickDefaultFrame(frames, 5), 3)
+  assert.equal(pickDefaultFrame([]), 0)
 })

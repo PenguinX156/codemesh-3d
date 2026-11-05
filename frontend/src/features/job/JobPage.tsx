@@ -4,6 +4,7 @@ import { useJob } from '../../app/hooks'
 import { hrefs } from '../../app/router'
 import { ResultPanel } from '../result/ResultPanel'
 import { ProgressView } from '../progress/ProgressView'
+import { MaskReview } from '../select/MaskReview'
 import { SelectView } from '../select/SelectView'
 import { SettingsPanel } from '../settings/SettingsPanel'
 
@@ -45,9 +46,7 @@ export function JobPage({ id }: { id: string }) {
       return (
         <>
           {offlineBanner}
-          <SelectView job={job} onSegmenting={reload}>
-            <SettingsPanel jobId={job.id} onStarted={reload} />
-          </SelectView>
+          <MaskReview job={job} reload={reload} />
         </>
       )
     case 'done': {
@@ -81,9 +80,7 @@ export function JobPage({ id }: { id: string }) {
         return (
           <>
             {offlineBanner}
-            <SelectView job={job} onSegmenting={reload} notice={<ProgressView job={job} />}>
-              {job.artifacts.masks_preview && <SettingsPanel jobId={job.id} onStarted={reload} />}
-            </SelectView>
+            <MaskReview job={job} reload={reload} notice={<ProgressView job={job} />} />
           </>
         )
       return (

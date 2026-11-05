@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { api } from '../../app/client'
+import { pickDefaultFrame } from '../../core/frames'
 import type { Frame, Job, PromptPoint } from '../../core/types'
 
 const KEY_STEP = 0.02
@@ -9,8 +10,6 @@ interface Props {
   job: Job
   /** Called after the selection was sent so the page can resume polling. */
   onSegmenting: () => void
-  /** Extra panel content, e.g. reconstruct settings once masks exist. */
-  children?: ReactNode
   /** Shown above the selection card, e.g. why the previous run failed. */
   notice?: ReactNode
 }
@@ -19,15 +18,15 @@ interface Props {
  * Pick the object: click = include, Alt/right-click or "Exclude" mode = exclude.
  * Keyboard: focus the frame, arrows move the cursor, Enter includes, Shift+Enter excludes.
  */
-export function SelectView({ job, onSegmenting, children, notice }: Props) {
+export function SelectView({ job, onSegmenting, notice }: Props) {
   const [frames, setFrames] = useState<Frame[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [current, setCurrent] = useState(0)
+  const [picked, setPicked] = useState<number | null>(null)
+  const [showStrip, setShowStrip] = useState(false)
   // Points belong to a single frame: adding on another frame starts a new prompt there.
   const [prompt, setPrompt] = useState<{ frame: number; points: PromptPoint[] }>({ frame: -1, points: [] })
-  const [text, setText] = useState('')
+  const [text, setText] = useState(() => (job.settings?.selection as { text?: string } | undefined)?.text ?? '')
   const [excludeMode, setExcludeMode] = useState(false)
-  const [showMask, setShowMask] = useState(true)
   const [cursor, setCursor] = useState({ x: 0.5, y: 0.5 })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -44,8 +43,8 @@ export function SelectView({ job, onSegmenting, children, notice }: Props) {
     }
   }, [job.id])
 
+  const current = picked ?? pickDefaultFrame(frames, job.best_frame)
   const frame = frames[current]
-  const maskUrl = job.artifacts.masks_preview ? api.artifactUrl(job.id, job.artifacts.masks_preview) : null
   const framePoints = prompt.frame === frame?.index ? prompt.points : []
 
   const addPoint = (x: number, y: number, label: 1 | 0) => {
@@ -88,43 +87,92 @@ export function SelectView({ job, onSegmenting, children, notice }: Props) {
   }
 
   return (
-    <div className="workspace">
-      <div className="stage">
-        {loadError && (
-          <p className="error" role="alert">
-            {loadError}
-          </p>
-        )}
-        {!frame && !loadError && <p className="muted pad">Loading frames…</p>}
-        {frame && (
-          <div className="frame-wrap">
-            <div
-              ref={stage}
-              className="frame-stage"
-              role="application"
-              aria-label="Frame view. Arrow keys move the cursor, Enter includes a point, Shift+Enter excludes."
-              tabIndex={0}
-              onClick={(e) => onClick(e)}
-              onContextMenu={(e) => {
-                e.preventDefault()
-                onClick(e, true)
-              }}
-              onKeyDown={onKeyDown}
-            >
-              <img src={api.resolveUrl(frame.url)} alt={`Frame ${frame.index}`} draggable={false} />
-              {showMask && maskUrl && <img className="mask-overlay" src={maskUrl} alt="" draggable={false} />}
-              {framePoints.map((p, i) => (
-                <span
-                  key={i}
-                  className={`point ${p.label ? 'include' : 'exclude'}`}
-                  style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}
-                />
-              ))}
-              <span className="kbd-cursor" style={{ left: `${cursor.x * 100}%`, top: `${cursor.y * 100}%` }} />
-            </div>
+    <div className="narrow select">
+      {notice}
+      <h1 className="select-title">
+        <label htmlFor="object-text">What is the object?</label>
+      </h1>
+      <input
+        id="object-text"
+        className="select-text"
+        type="text"
+        value={text}
+        maxLength={120}
+        placeholder="e.g. black coffee mug"
+        autoFocus
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && canSegment && segment()}
+      />
+      {loadError && (
+        <p className="error" role="alert">
+          {loadError}
+        </p>
+      )}
+      {!frame && !loadError && <p className="muted pad">Loading frames…</p>}
+      {frame && (
+        <div className="frame-wrap">
+          <div
+            ref={stage}
+            className="frame-stage"
+            role="application"
+            aria-label="Reference frame. Optional: click the object to add a point. Arrow keys move the cursor, Enter includes a point, Shift+Enter excludes."
+            tabIndex={0}
+            onClick={(e) => onClick(e)}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              onClick(e, true)
+            }}
+            onKeyDown={onKeyDown}
+          >
+            <img src={api.resolveUrl(frame.url)} alt={`Reference frame ${frame.index}`} draggable={false} />
+            {framePoints.map((p, i) => (
+              <span
+                key={i}
+                className={`point ${p.label ? 'include' : 'exclude'}`}
+                style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}
+              />
+            ))}
+            <span className="kbd-cursor" style={{ left: `${cursor.x * 100}%`, top: `${cursor.y * 100}%` }} />
           </div>
+        </div>
+      )}
+      <p className="muted small">
+        Optional: click the object to pin it down. Right-click or Alt-click marks background.
+        {framePoints.length > 0 && (
+          <span className="num">
+            {' '}
+            {framePoints.filter((p) => p.label === 1).length} include &middot;{' '}
+            {framePoints.filter((p) => p.label === 0).length} exclude.{' '}
+            <button type="button" className="btn link" onClick={() => setPrompt({ frame: -1, points: [] })}>
+              Clear
+            </button>
+          </span>
         )}
-        <ul className="strip" aria-label="Frames">
+      </p>
+      <label className="check">
+        <input type="checkbox" checked={excludeMode} onChange={(e) => setExcludeMode(e.target.checked)} />
+        <span>Taps mark background (for touch screens)</span>
+      </label>
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      <button type="button" className="btn primary big" disabled={!canSegment} onClick={segment}>
+        {busy ? 'Starting…' : 'Find object in all frames'}
+      </button>
+      {!canSegment && !busy && frame && <p className="muted small">Describe the object or click it to continue.</p>}
+      <button
+        type="button"
+        className="btn link"
+        aria-expanded={showStrip}
+        aria-controls="frame-strip"
+        onClick={() => setShowStrip((v) => !v)}
+      >
+        {showStrip ? 'Hide other frames' : 'Use a different frame'}
+      </button>
+      {showStrip && (
+        <ul className="strip" id="frame-strip" aria-label="Frames">
           {frames.map((f, i) => (
             <li key={f.index}>
               <button
@@ -132,68 +180,14 @@ export function SelectView({ job, onSegmenting, children, notice }: Props) {
                 aria-pressed={i === current}
                 aria-label={`Frame ${f.index}`}
                 title={`Frame ${f.index} · sharpness ${f.sharpness.toFixed(0)}`}
-                onClick={() => setCurrent(i)}
+                onClick={() => setPicked(i)}
               >
                 <img src={api.resolveUrl(f.thumb_url)} alt="" loading="lazy" draggable={false} />
               </button>
             </li>
           ))}
         </ul>
-      </div>
-
-      <div className="panel">
-        {notice}
-        <section className="card" aria-labelledby="select-title">
-          <h2 id="select-title">Select the object</h2>
-          <p className="muted small">
-            Click the object to include it. Alt-click or right-click marks background to exclude. On touch, switch to
-            Exclude.
-          </p>
-          <fieldset className="segmented">
-            <legend>Point type</legend>
-            <label>
-              <input type="radio" name="pt" checked={!excludeMode} onChange={() => setExcludeMode(false)} />
-              <span>Include</span>
-            </label>
-            <label>
-              <input type="radio" name="pt" checked={excludeMode} onChange={() => setExcludeMode(true)} />
-              <span>Exclude</span>
-            </label>
-          </fieldset>
-          <label className="field">
-            <span>Description (optional)</span>
-            <input
-              type="text"
-              value={text}
-              maxLength={120}
-              placeholder="e.g. ceramic mug"
-              onChange={(e) => setText(e.target.value)}
-            />
-          </label>
-          <p className="num small">
-            {framePoints.filter((p) => p.label === 1).length} include &middot;{' '}
-            {framePoints.filter((p) => p.label === 0).length} exclude
-            <button type="button" className="btn link" onClick={() => setPrompt({ frame: -1, points: [] })} disabled={!framePoints.length}>
-              Clear
-            </button>
-          </p>
-          {maskUrl && (
-            <label className="check">
-              <input type="checkbox" checked={showMask} onChange={(e) => setShowMask(e.target.checked)} />
-              <span>Show mask preview</span>
-            </label>
-          )}
-          {error && (
-            <p className="error" role="alert">
-              {error}
-            </p>
-          )}
-          <button type="button" className="btn primary" disabled={!canSegment} onClick={segment}>
-            {busy ? 'Starting…' : maskUrl ? 'Re-run segmentation' : 'Segment object'}
-          </button>
-        </section>
-        {children}
-      </div>
+      )}
     </div>
   )
 }

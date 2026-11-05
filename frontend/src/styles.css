@@ -751,3 +751,53 @@ legend {
 
 .compare-list { display: grid; gap: 0.5rem; }
 .compare-list img { width: 100%; display: block; border-radius: 6px; border: 1px solid var(--border, #333); }
+
+/* Select screen: one large frame, one question, one button */
+.select {
+  max-width: 880px;
+}
+.select-title {
+  margin: 0;
+  font-size: 22px;
+}
+.select-text {
+  font-size: 18px;
+  padding: 12px 14px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.select .frame-stage img,
+.mask-preview {
+  max-height: 60vh;
+  max-width: 100%;
+}
+.mask-preview {
+  display: block;
+  border-radius: 4px;
+}
+.btn.big {
+  font-size: 17px;
+  padding: 14px 18px;
+}
+.select > .btn.link {
+  align-self: flex-start;
+}
+.settings-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.advanced {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+}
+.advanced > summary {
+  cursor: pointer;
+  font-size: 14px;
+}
+.advanced[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}

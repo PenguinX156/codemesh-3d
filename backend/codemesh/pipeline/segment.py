@@ -1,10 +1,10 @@
 """Segment stage: the user's selection -> full-res object masks for the ingested frames.
 
-Input: Job.settings["selection"] = {frame_index, points: [{x, y, label}] (normalized), text?}
-(stored by POST /jobs/{id}/select). Video jobs: SAM 3.1 tracks the object through the original
-upload (re-encoded to H.264 MP4 only when the API cannot read it) and we keep the masks of the
-frames ingest selected. Photo jobs: SAM 3.1 per image; the clicked points apply only to the
-selected image, the others use the text prompt (fallback "object").
+Input: Job.settings["selection"] = {frame_index, points: [{x, y, label}] (normalized)?, text?}
+(stored by POST /jobs/{id}/select; at least a point or text). The frames ingest kept are encoded as
+a short H.264 clip (<= 1920 px, padded to 50 frames) and tracked by ONE SAM 3.1 video request;
+the prompt frame is the selected frame's position in the clip. Masks map 1:1 back to the kept
+frames and are upscaled to full frame resolution. Photo sets use the same clip path.
 
 Outputs (masks/): <index>.png (255 = object, full frame resolution), valid.json (frames usable
 by later stages: mask not empty and touching <= 40% of the image border), preview.jpg (overlay
@@ -22,15 +22,15 @@ from typing import Any
 import av
 import cv2
 import numpy as np
+from PIL import Image
 
 from codemesh.jobs.context import StageContext
 from codemesh.meta import sam
-from codemesh.pipeline.ingest import rotate_upright
 
 MIN_VIEWS = 8  # fewer usable views cannot give a closed model
 MAX_BORDER_FRACTION = 0.4  # masks hugging the border = background/table picked, not the object
-API_CODECS = frozenset({"h264", "hevc", "mpeg4"})
-API_CONTAINERS = frozenset({".mp4", ".mov"})
+CLIP_MAX_SIDE = 1920  # long side of the clip uploaded to SAM
+SAM_MIN_FRAMES = 50  # the API bills at least 50 frames per request
 PREVIEW_TILES, PREVIEW_TILE_PX = 8, 480
 
 
@@ -47,53 +47,57 @@ def border_fraction(mask: np.ndarray) -> float:
     return float(border.mean())
 
 
-def api_video(src: Path, work: Path, rotation: float) -> Path:
-    """`src` if SAM accepts it, else an upright H.264 MP4 re-encode in `work` (same frame order)."""
-    with av.open(str(src)) as c:
-        codec = c.streams.video[0].codec_context.name
-    if src.suffix.lower() in API_CONTAINERS and codec in API_CODECS:
-        return src
-    dst = work / "sam_input.mp4"
-    with av.open(str(src)) as inp, av.open(str(dst), "w") as out:
+def build_clip(files: list[Path], dst: Path) -> tuple[int, int]:
+    """Encode the kept frames, in order, as a small H.264 MP4 for SAM; returns its (width, height).
+
+    Long side <= CLIP_MAX_SIDE (even dimensions for yuv420p, so the aspect is off by < 1 px), padded
+    to the API's SAM_MIN_FRAMES minimum by repeating the last frame. SAM bills per clip frame, so
+    this costs len(files) frames instead of every frame of the original video.
+    """
+    with av.open(str(dst), "w") as out:
         stream = None
-        for frame in inp.decode(video=0):
-            rgb = rotate_upright(frame.to_ndarray(format="rgb24"), rotation)
-            if stream is None:
-                stream = out.add_stream("libx264", rate=30)
-                stream.width, stream.height = rgb.shape[1] // 2 * 2, rgb.shape[0] // 2 * 2
-                stream.pix_fmt, stream.options = "yuv420p", {"crf": "18"}
-            vf = av.VideoFrame.from_ndarray(rgb[: stream.height, : stream.width], format="rgb24")
-            out.mux(stream.encode(vf))
+        for k in range(max(len(files), SAM_MIN_FRAMES)):
+            if k < len(files):
+                with Image.open(files[k]) as im:
+                    rgb = im.convert("RGB")
+                if stream is None:
+                    s = min(1.0, CLIP_MAX_SIDE / max(rgb.size))
+                    size = (max(2, round(rgb.width * s) // 2 * 2), max(2, round(rgb.height * s) // 2 * 2))
+                    stream = out.add_stream("libx264", rate=10)
+                    stream.width, stream.height = size
+                    stream.pix_fmt, stream.options = "yuv420p", {"crf": "20"}
+                vf = av.VideoFrame.from_ndarray(np.asarray(rgb.resize(size, Image.LANCZOS)), format="rgb24")
+            out.mux(stream.encode(vf))  # k >= len(files): vf is still the last frame
         out.mux(stream.encode())
-    return dst
+    return size
+
+
+def upscale_mask(mask: np.ndarray, size: tuple[int, int]) -> np.ndarray:
+    """Bool mask -> bool mask of `size` (w, h). SAM returns no soft mask, so smooth the binary one:
+    bilinear upscale of 0/1 then threshold 0.5 rounds the stair-steps of the clip resolution."""
+    if mask.shape == (size[1], size[0]):
+        return mask
+    return cv2.resize(mask.astype(np.float32), size, interpolation=cv2.INTER_LINEAR) >= 0.5
 
 
 def segment_masks(ctx: StageContext, frames: dict[str, Any], sel: dict[str, Any]) -> tuple[dict[int, np.ndarray], dict]:
-    """Run SAM 3.1; return {frame index: bool mask at full frame size} and call info."""
+    """Run ONE SAM 3.1 video request on a clip of the kept frames (photos too: tracking keeps the
+    identity and is cheaper than per-image). Returns {frame position: bool mask at full frame size}."""
     entries = frames["frames"]
-    chosen = entries[int(sel["frame_index"])]
     points = [sam.Point(float(p["x"]), float(p["y"]), int(p.get("label", 1))) for p in sel.get("points", [])]
     text = (sel.get("text") or "").strip() or None
     if not points and not text:
         raise ValueError("selection needs at least one point or a text prompt")
-    size = (int(chosen["width"]), int(chosen["height"]))
-    if frames["kind"] == "video":
-        video = sorted(p for p in ctx.paths.input.iterdir() if p.is_file())[0]
-        src = api_video(video, ctx.paths.masks, float(frames.get("rotation") or 0))
-        ctx.progress(0.1, "tracking the object with SAM 3.1")
-        res = sam.segment_video(src, points=points, text=text, prompt_frame=int(chosen["source_index"]),
-                                frame_indices=[int(e["source_index"]) for e in entries], size=size)
-        by_source = {int(e["source_index"]): int(e["index"]) for e in entries}
-        masks = {by_source[f]: m.mask for f, m in res.masks.items() if f in by_source}
-        return masks, {"usage": res.usage, "timings": res.timings, "candidates": len(res.candidates)}
-    ctx.progress(0.1, "segmenting photos with SAM 3.1")
-    files = [ctx.paths.frames / e["file"] for e in entries]
-    sel_idx = int(chosen["index"])
-    first = sam.segment_images([files[sel_idx]], points=points, text=text)[0]
-    others = [i for i in range(len(entries)) if i != sel_idx]
-    rest = sam.segment_images([files[i] for i in others], text=text or "object") if others else []
-    masks = {i: r.masks[0].mask for i, r in zip([sel_idx, *others], [first, *rest]) if 0 in r.masks}
-    return masks, {"images": len(entries)}
+    ctx.progress(0.05, "building the SAM clip")
+    clip = ctx.paths.masks / "sam_input.mp4"
+    clip_size = build_clip([ctx.paths.frames / e["file"] for e in entries], clip)
+    ctx.progress(0.1, "tracking the object with SAM 3.1")
+    res = sam.segment_video(clip, points=points, text=text, prompt_frame=int(sel["frame_index"]),
+                            frame_indices=range(len(entries)), size=clip_size)
+    masks = {i: upscale_mask(m.mask, (int(entries[i]["width"]), int(entries[i]["height"])))
+             for i, m in res.masks.items() if 0 <= i < len(entries)}
+    return masks, {"usage": res.usage, "timings": res.timings, "candidates": len(res.candidates),
+                   "clip_size": list(clip_size)}
 
 
 def preview(ctx: StageContext, entries: list[dict], masks: dict[int, np.ndarray], first: int) -> Path:

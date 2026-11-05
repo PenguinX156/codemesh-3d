@@ -36,13 +36,14 @@ ENV = {
 
 image = (
     modal.Image.debian_slim(python_version="3.12")
-    .apt_install("libgl1", "libglib2.0-0", "libgomp1", "git")
+    .apt_install("libgl1", "libegl1", "libglib2.0-0", "libgomp1", "libusb-1.0-0", "libx11-6", "libxext6", "libxrender1", "libsm6", "git")  # open3d links these even headless
     # PyPI Linux wheels of torch bundle CUDA; versions match the local CPU reference venv.
     .pip_install("torch==2.15.0", "torchvision==0.29.2")
     .pip_install(
         "fastapi>=0.115", "uvicorn[standard]>=0.30", "python-multipart>=0.0.9", "pydantic>=2.7",
         "httpx>=0.27", "openai>=1.50", "python-dotenv>=1.0", "numpy>=1.26,<2.3", "scipy>=1.13",
         "av>=12", "pillow>=10.4", "open3d>=0.19", "trimesh>=4.4", "xatlas>=0.0.9", "huggingface-hub>=0.25",
+        "meta-sam-parser==0.1.0",  # SAM 3.1 mask decoding (codemesh.meta.sam)
         # MapAnything runtime deps (third_party/map-anything/pyproject.toml at 3d10cf7)
         "hydra-core", "natsort", "opencv-python-headless==4.10.0.84", "orjson", "pillow-heif", "plyfile",
         "python-box", "requests", "rerun-sdk~=0.24.1", "safetensors", "tensorboard", "tqdm", "uniception==0.1.7",
@@ -73,18 +74,45 @@ def download_weights() -> None:
     print(sorted(p.name for p in target.iterdir()))
 
 
-@app.cls(image=image, gpu=GPU, volumes={"/models": models_vol}, scaledown_window=120, timeout=900)
+@app.cls(
+    image=image,
+    gpu=GPU,
+    volumes={"/models": models_vol},
+    memory=16384,
+    scaledown_window=120,
+    timeout=900,
+    enable_memory_snapshot=True,  # CPU memory snapshot: weights load once, restores skip the volume read
+)
 class GeometryWorker:
-    @modal.enter()
+    @modal.enter(snap=True)
     def load(self) -> None:
-        import torch
-
+        """Runs once at snapshot time (no GPU attached): model weights into CPU memory."""
         from codemesh.engines.torch_engine import TorchEngine
 
         t0 = time.perf_counter()
-        self.engine = TorchEngine("mapanything", device="cuda")
+        self.engine = TorchEngine("mapanything", device="cpu")
+        self.snapshot_load_seconds = round(time.perf_counter() - t0, 2)
+
+    @modal.enter(snap=False)
+    def to_gpu(self) -> None:
+        """Runs on every container start, including restores from the snapshot."""
+        import torch
+
+        from codemesh.engines.torch_engine import default_precision
+
+        t0 = time.perf_counter()
+        self.engine.device = torch.device("cuda")
+        self.engine.precision = default_precision("cuda")
+        self.engine.model = self.engine.model.to(self.engine.device)
         self.gpu = torch.cuda.get_device_name(0)
         self.load_seconds = round(time.perf_counter() - t0, 2)
+        self.started = time.time()
+
+    @modal.method()
+    def warmup(self) -> dict:
+        """Cheap no-op call that only forces a container up; reports how long the GPU move took."""
+        return {"gpu": self.gpu, "to_gpu_seconds": self.load_seconds,
+                "snapshot_load_seconds": self.snapshot_load_seconds, "container_age_s": round(time.time() - self.started, 1)}
 
     @modal.method()
     def infer(self, images: list[bytes], masks: list[bytes] | None = None) -> bytes:

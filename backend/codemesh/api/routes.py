@@ -20,7 +20,7 @@ from codemesh.jobs.runner import JobBusyError, Runner
 from codemesh.jobs.store import JobStore
 from codemesh.pipeline.ingest import HEIF_SUPPORTED, PRESET_FRAMES
 
-from .schemas import Capabilities, FrameInfo, Health, ReconstructRequest, RefineRequest, SelectRequest
+from .schemas import Capabilities, FrameInfo, Health, ReconstructRequest, RefineRequest, SelectRequest, Warmup
 from .uploads import MAX_IMAGES, UploadError, save_uploads
 
 router = APIRouter(prefix="/api")
@@ -83,7 +83,15 @@ def capabilities(request: Request) -> Capabilities:
         engines={"torch": find_spec("torch") is not None, "modal": find_spec("modal") is not None},
         heic=HEIF_SUPPORTED,
         max_upload_bytes=request.app.state.max_upload_bytes,
+        engine=factory.engine_label(),
+        state=factory.warmup_state(),
     )
+
+
+@router.post("/warmup", response_model=Warmup)
+def warmup() -> Warmup:
+    """Load the geometry engine in the background (idempotent); poll /capabilities for the state."""
+    return Warmup(engine=factory.engine_label(), state=factory.warmup())
 
 
 @router.post("/jobs", response_model=Job, status_code=201)
@@ -131,14 +139,25 @@ def get_job(request: Request, job_id: str) -> Job:
     return _job(request, job_id)
 
 
+def best_frame_index(frames: list[dict[str, Any]]) -> int:
+    """List position of the sharpest frame among the middle 60% (positions 20%..80%): the ends of a
+    walk-around are often transitions or partial views, the middle is the best reference."""
+    n = len(frames)
+    lo = round(0.2 * n)
+    hi = max(round(0.8 * n), lo + 1)
+    return max(range(lo, min(hi, n)), key=lambda i: frames[i]["sharpness"])
+
+
 @router.get("/jobs/{job_id}/frames", response_model=list[FrameInfo])
 def list_frames(request: Request, job_id: str) -> list[FrameInfo]:
     _job(request, job_id)
     base = f"/api/jobs/{job_id}/artifacts/frames/"
+    frames = _frames(request, job_id)
+    best = best_frame_index(frames) if frames else -1
     return [
         FrameInfo(index=e["index"], url=base + e["file"], thumb_url=base + e["thumb"],
-                  sharpness=e["sharpness"], width=e["width"], height=e["height"])
-        for e in _frames(request, job_id)
+                  sharpness=e["sharpness"], width=e["width"], height=e["height"], best=n == best)
+        for n, e in enumerate(frames)
     ]
 
 

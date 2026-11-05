@@ -54,6 +54,7 @@ class FrameInfo(BaseModel):
     sharpness: float
     width: int
     height: int
+    best: bool = False  # exactly one frame: the sharpest of the middle 60% (see routes.best_frame_index)
 
 
 class Health(BaseModel):
@@ -70,3 +71,10 @@ class Capabilities(BaseModel):
     engines: dict[str, bool]  # runtime -> importable
     heic: bool
     max_upload_bytes: int
+    engine: str  # resolved geometry engine (config value until resolved)
+    state: Literal["cold", "warming", "ready"]  # engine warmup state
+
+
+class Warmup(BaseModel):
+    engine: str
+    state: Literal["cold", "warming", "ready"]

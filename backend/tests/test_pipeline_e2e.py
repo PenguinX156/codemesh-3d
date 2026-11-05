@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import av
 import cv2
 import numpy as np
 import pytest
@@ -15,7 +16,7 @@ from codemesh.jobs.models import Job
 from codemesh.jobs.paths import job_paths
 from codemesh.jobs.store import JobStore
 from codemesh.meta import sam
-from codemesh.pipeline import ACTIONS, geometry, reconstruct_settings
+from codemesh.pipeline import ACTIONS, geometry, reconstruct_settings, segment
 from codemesh.pipeline.cameras import load_cameras
 from synthetic import make_scene
 
@@ -42,7 +43,7 @@ def run_stage(store: JobStore, job: Job, paths, action: str, name: str, settings
 def test_registry_has_all_stages() -> None:
     assert [s.name for s in ACTIONS["segment"].stages] == ["segment"]
     assert [s.name for s in ACTIONS["reconstruct"].stages] == ["geometry", "fuse", "mesh", "texture", "export",
-                                                               "evaluate"]
+                                                               "evaluate", "agent"]
     flat = reconstruct_settings({"preset": "standard", "selection": {}, "reconstruct": {"preset": "draft",
                                                                                        "known_dimension": None}})
     assert flat == {"preset": "draft"}
@@ -59,21 +60,23 @@ def test_segment_photo_job_writes_masks_and_drops_bad_frames(setup, monkeypatch)
     gt[5] = np.zeros_like(gt[5])  # nothing found
     calls = []
 
-    def fake_segment_images(images, *, points=(), text=None, client=None):
-        calls.append((len(images), bool(points), text))
-        out = []
-        for img in images:
-            i = int(Path(img).stem)
-            res = sam.SegResult(size=(gt[i].shape[1], gt[i].shape[0]), selected_id=1)
-            if gt[i].any():
-                res.masks[0] = sam.ObjectMask(1, 0, gt[i], (0, 0, 1, 1), 0.9)
-            out.append(res)
-        return out
+    def fake_segment_video(video, *, points=(), text=None, prompt_frame=0, frame_indices=None, size=None, client=None):
+        with av.open(str(video)) as c:
+            n = sum(1 for _ in c.decode(video=0))
+        calls.append((n, size, bool(points), text, prompt_frame, list(frame_indices)))
+        res = sam.SegResult(size=size, selected_id=1)
+        for i in range(n):  # padded frames beyond the real ones must be ignored
+            m = cv2.resize(gt[i % len(gt)].astype(np.uint8), size, interpolation=cv2.INTER_NEAREST).astype(bool)
+            if m.any():
+                res.masks[i] = sam.ObjectMask(1, i, m, (0, 0, 1, 1), 0.9)
+        return res
 
-    monkeypatch.setattr(sam, "segment_images", fake_segment_images)
+    monkeypatch.setattr(sam, "segment_video", fake_segment_video)
     m = run_stage(store, job, paths, "segment", "segment",
                   {"selection": {"frame_index": 2, "points": [{"x": 0.5, "y": 0.5, "label": 1}], "text": None}})
-    assert calls == [(1, True, None), (len(gt) - 1, False, "object")]  # click only on the selected image
+    w, h = frames["frames"][0]["width"], frames["frames"][0]["height"]
+    assert calls == [(segment.SAM_MIN_FRAMES, (w // 2 * 2, h // 2 * 2), True, None, 2, list(range(len(gt))))]
+    assert m["clip_size"] == [w // 2 * 2, h // 2 * 2]
     valid = json.loads((paths.masks / "valid.json").read_text())
     assert 3 not in valid and 5 not in valid and len(valid) == len(gt) - 2
     assert m["frames_empty"] == [5] and m["frames_border"] == [3]
@@ -149,9 +152,29 @@ def test_fuse_mesh_adapters_record_metrics(setup) -> None:
 def test_engine_factory_resolves_auto(monkeypatch) -> None:
     from codemesh.engines import factory
 
+    from codemesh.engines import rocm_engine
+
+    monkeypatch.setattr(rocm_engine, "ROCM_PYTHON", Path("does/not/exist"))
     monkeypatch.setattr(factory, "modal_available", lambda timeout=0: False)
     assert factory.resolve_name("auto") == "torch"
     monkeypatch.setattr(factory, "modal_available", lambda timeout=0: True)
-    assert factory.resolve_name("auto") == "modal" and factory.resolve_name("ROCM") == "rocm"
+    assert factory.resolve_name("auto") == "modal"
+    monkeypatch.setattr(rocm_engine, "ROCM_PYTHON", Path(__file__))  # any existing file
+    assert factory.resolve_name("auto") == "rocm" and factory.resolve_name("ROCM") == "rocm"
     with pytest.raises(ValueError):
         factory.resolve_name("ggml")
+
+
+def test_view_count_uses_fixed_counts_only() -> None:
+    assert [geometry.view_count(n, 32) for n in (8, 15, 16, 23, 24, 31, 40)] == [8, 8, 16, 16, 24, 24, 32]
+    assert geometry.view_count(100, 16) == 16 and geometry.view_count(20, 24) == 16
+    assert len(geometry.pick_views(list(range(20)), 24)) == 16
+    assert len(geometry.pick_views(list(range(9)), 16)) == 8
+
+
+def test_upscale_mask_smooths_to_full_size() -> None:
+    small = np.zeros((20, 20), bool)
+    small[5:15, 5:15] = True
+    big = segment.upscale_mask(small, (100, 80))
+    assert big.shape == (80, 100) and big.dtype == bool and big[40, 50] and not big[2, 2]
+    assert segment.upscale_mask(small, (20, 20)) is small

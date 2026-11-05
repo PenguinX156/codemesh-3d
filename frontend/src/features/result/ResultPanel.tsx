@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { api } from '../../app/client'
 import { formatCount, formatSeconds, titleCase } from '../../core/format'
 import { compareArtifacts, summarize } from '../../core/summary'
@@ -61,7 +62,48 @@ export function ResultPanel({ job, glb }: { job: Job; glb: string | null }) {
           </div>
         </section>
       )}
+
+      <AgentCard job={job} />
     </>
+  )
+}
+
+type AgentReport = {
+  analysis?: { category?: string; plan?: string } | null
+  tool_calls?: { round: number; name: string; arguments: Record<string, unknown>; result: string }[]
+}
+
+/** Muse Spark agent decisions (agent/report.json): category, plan and every tool call it made. */
+function AgentCard({ job }: { job: Job }) {
+  const path = job.artifacts.agent_report
+  const [report, setReport] = useState<AgentReport | null>(null)
+  useEffect(() => {
+    if (!path) return
+    fetch(api.artifactUrl(job.id, path))
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setReport)
+      .catch(() => setReport(null))
+  }, [job.id, path, job.status])
+  if (!report) return null
+  return (
+    <section className="card" aria-labelledby="agent-title">
+      <h2 id="agent-title">Muse Spark agent</h2>
+      <dl className="kv">
+        <Row name="Category" value={report.analysis?.category ?? 'n/a'} />
+      </dl>
+      {report.analysis?.plan && <p className="small">{report.analysis.plan}</p>}
+      <ol className="small">
+        {(report.tool_calls ?? []).map((c, i) => {
+          const { rationale, ...args } = c.arguments
+          return (
+            <li key={i}>
+              <code>{`${c.name}(${Object.entries(args).map(([k, v]) => `${k}=${String(v)}`).join(', ')})`}</code>{' '}
+              <span className="muted">round {c.round}: {String(rationale ?? c.result)}</span>
+            </li>
+          )
+        })}
+      </ol>
+    </section>
   )
 }
 

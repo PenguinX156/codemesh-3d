@@ -56,6 +56,7 @@ class RocmEngine:
         self._lines: queue.Queue[str | None] = queue.Queue()
         self._info: dict = {}
         self._calls = 0
+        self._infer_lock = threading.Lock()  # one request at a time on the worker's pipe (warmup vs. jobs)
         self._start()
 
     # -- worker lifecycle --------------------------------------------------------------------
@@ -109,6 +110,10 @@ class RocmEngine:
 
         A dead or hung worker is killed and restarted; a request that hit a dead worker is retried once.
         """
+        with self._infer_lock:
+            return self._infer(images)
+
+    def _infer(self, images: list[np.ndarray]) -> ViewGeometry:
         self._calls += 1
         inp, out = self._tmp / f"in_{self._calls}.npz", self._tmp / f"out_{self._calls}.npz"
         np.savez(inp, **{f"img_{i}": im for i, im in enumerate(images)})

@@ -52,6 +52,7 @@ export function UploadPanel({ disabled }: { disabled: boolean }) {
     setError(null)
     try {
       const job = await api.createJob(files, mode)
+      api.warmup().catch(() => {}) // warm the GPU while ingest/segmentation prepare
       navigate(hrefs.job(job.id))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Upload failed')

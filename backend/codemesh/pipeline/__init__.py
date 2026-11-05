@@ -11,9 +11,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from codemesh.jobs.context import Action, Stage, StageContext, StageFn
+from codemesh.jobs.context import Action, Stage, StageContext
 
-from . import evaluate, export, fuse, geometry, ingest, mesh, segment, texture
+from . import evaluate, export, fuse, geometry, ingest, mesh, quality, segment, texture
 
 JobDirFn = Callable[[Path, dict[str, Any], Callable[[float, str], None] | None], dict[str, Any]]
 
@@ -27,11 +27,10 @@ HEADLINE = {
 }
 
 
-def _not_implemented(name: str) -> StageFn:
-    def run(ctx: StageContext) -> None:
-        raise NotImplementedError(f"stage '{name}' is not implemented yet")
+def _agent(ctx: StageContext) -> dict[str, Any]:
+    from codemesh.agent import loop  # lazy: the agent imports this package
 
-    return run
+    return loop.run(ctx)
 
 
 def reconstruct_settings(settings: dict[str, Any]) -> dict[str, Any]:
@@ -96,8 +95,11 @@ ACTIONS: dict[str, Action] = {
         done="done",
         stages=[Stage("geometry", _geometry)]
         + [_job_dir_stage(n, m.run) for n, m in
-           (("fuse", fuse), ("mesh", mesh), ("texture", texture), ("export", export), ("evaluate", evaluate))],
+           (("fuse", fuse), ("mesh", mesh), ("texture", texture), ("export", export), ("evaluate", evaluate))]
+        + [Stage("agent", _agent)]  # Muse Spark modeling loop; settings.agent = false skips it
+        + [_job_dir_stage("quality", quality.run)],  # final game-ready gate on the shipped GLB
     ),
-    # POST /jobs/{id}/refine (Phase 3).
-    "refine": Action(running="refining", done="done", stages=[Stage("refine", _not_implemented("refine"))]),
+    # POST /jobs/{id}/refine -> the agent loop again, with settings.refine.instruction in the prompt.
+    "refine": Action(running="refining", done="done",
+                     stages=[Stage("agent", _agent), _job_dir_stage("quality", quality.run)]),
 }

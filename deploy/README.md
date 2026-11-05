@@ -5,7 +5,7 @@
 | Object | What | Resources |
 |---|---|---|
 | `web` | FastAPI app (`codemesh.main.create_app`) + `frontend/dist` at `/`: one URL for UI and API | 8 CPU, 16 GiB, `max_containers=1`, `min_containers=0`, scales down after 600 s idle |
-| `GeometryWorker` | `TorchEngine("mapanything", device="cuda")`, loaded once per container | L4 GPU, scales down after 120 s idle, 900 s timeout |
+| `GeometryWorker` | `TorchEngine("mapanything")`: weights load to CPU at snapshot time (`@modal.enter(snap=True)`), move to CUDA on every start (`snap=False`); `infer` + cheap `warmup` methods | L4 GPU, 16 GiB, `enable_memory_snapshot=True`, scales down after 120 s idle, 900 s timeout |
 | `download_weights` | snapshots `facebook/map-anything-apache` into the `codemesh-models` volume, warms the DINOv2 torch hub cache | 4 CPU, run once |
 
 Volumes: `codemesh-models` at `/models` (weights, torch hub, HF cache), `codemesh-jobs` at `/jobs` (SQLite + job files).
@@ -57,6 +57,19 @@ curl https://<workspace>--codemesh-web.modal.run/api/health
 ```
 
 Redeploying after code changes only rebuilds the thin source / UI layers. Stop everything with `modal app stop codemesh`.
+
+## Cold start
+
+Measured before memory snapshots (`modal run deploy/modal_app.py::bench`, L4 bf16): model load 47 s, inference 4.1 s for 8 views, first call ever 347 s including the image build.
+With `enable_memory_snapshot=True` the first container after each deploy loads the weights and writes the snapshot; later cold starts restore CPU memory and only pay the CPU->GPU copy (`warmup()` returns `to_gpu_seconds`). Not yet measured after the snapshot change: the redeploy was not run.
+
+Measure (two calls spaced more than `scaledown_window` apart so the second one is a restore):
+
+```bash
+uv run --project backend --with modal python -c "import modal,time; w=modal.Cls.from_name('codemesh','GeometryWorker')(); t=time.time(); print(w.warmup.remote(), round(time.time()-t,1))"
+```
+
+`POST /api/warmup` on the web app spawns one 8-view `infer` call (`codemesh.engines.factory.warmup`), so the GPU container is up by the time segmentation finishes.
 
 ## Costs (Modal list prices, check modal.com/pricing)
 

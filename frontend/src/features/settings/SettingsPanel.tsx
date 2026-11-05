@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { api } from '../../app/client'
 import { DEFAULT_SETTINGS, PRESETS, TEXTURE_SIZES, parseTriangleBudget } from '../../core/presets'
 import type { Axis, ReconstructSettings } from '../../core/types'
@@ -8,10 +8,12 @@ interface Props {
   /** Called after the request was accepted so the page can resume polling. */
   onStarted: () => void
   submitLabel?: string
+  /** Title and fold the options under "Advanced"; the submit button stays visible. */
+  advanced?: boolean
 }
 
 /** Reconstruction settings draft + submit. Cached stages mean re-running with new texture settings is cheap. */
-export function SettingsPanel({ jobId, onStarted, submitLabel = 'Reconstruct' }: Props) {
+export function SettingsPanel({ jobId, onStarted, submitLabel = 'Reconstruct', advanced = false }: Props) {
   const [settings, setSettings] = useState<ReconstructSettings>(DEFAULT_SETTINGS)
   const [fixedBudget, setFixedBudget] = useState(false)
   const [budgetText, setBudgetText] = useState('20000')
@@ -42,8 +44,9 @@ export function SettingsPanel({ jobId, onStarted, submitLabel = 'Reconstruct' }:
   }
 
   return (
-    <section className="card" aria-labelledby="settings-title">
-      <h2 id="settings-title">Settings</h2>
+    <section className={advanced ? 'settings-inline' : 'card'} aria-label="Reconstruction settings">
+      {!advanced && <h2 id="settings-title">Settings</h2>}
+      <Fold advanced={advanced}>
 
       <fieldset className="segmented">
         <legend>Quality preset</legend>
@@ -145,6 +148,7 @@ export function SettingsPanel({ jobId, onStarted, submitLabel = 'Reconstruct' }:
           </label>
         </div>
       )}
+      </Fold>
 
       {error && (
         <p className="error" role="alert">
@@ -155,5 +159,16 @@ export function SettingsPanel({ jobId, onStarted, submitLabel = 'Reconstruct' }:
         {busy ? 'Starting…' : submitLabel}
       </button>
     </section>
+  )
+}
+
+function Fold({ advanced, children }: { advanced: boolean; children: ReactNode }) {
+  return advanced ? (
+    <details className="advanced">
+      <summary>Advanced: preset, triangles, texture</summary>
+      {children}
+    </details>
+  ) : (
+    <>{children}</>
   )
 }

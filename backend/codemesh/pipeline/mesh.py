@@ -1,6 +1,9 @@
 """Mesh stage: fused points -> dense surface (mesh/high.ply) -> game mesh (mesh/low.ply).
 
-high: screened Poisson (depth by preset), low-density trim, visual-hull carve (drop faces that
+mesh_method "hull_depth" (default): visual hull voxel-carved from the full-res masks, free-space
+carved by confident engine depth, surfaced by Poisson on its iso-level points (see hull.py);
+robust when the object is small in frame and engine depth on it is sparse.
+mesh_method "poisson": screened Poisson on fused points (depth by preset), low-density trim, visual-hull carve (drop faces that
 project outside the full-res masks in >= k views), keep large components, fill small holes,
 manifold cleanup. low: progressive quadric decimation until the mean high->low distance
 exceeds a tolerance (budget "auto") or to an explicit triangle count, optional Taubin smoothing
@@ -9,7 +12,10 @@ when it lowers the error. Both meshes are then moved into a gravity-aligned obje
 `known_dimension`), and that transform is recorded in mesh/transform.json
 (x_mesh = matrix @ x_world) so texture/export can map cameras into the same frame.
 
-Settings: preset (draft|standard|high), triangle_budget ("auto"|int), known_dimension
+Settings: mesh_method (hull_depth|poisson), hull_resolution (192|256|320 by preset), hull_dilate_px (4),
+hull_max_outside (1), hull_depth_tol (0.03, 0 = off), hull_depth_votes (2), hull_taubin (5), hull_floor (true: clip below the
+lowest fused points),
+preset (draft|standard|high), triangle_budget ("auto"|int), known_dimension
 ({axis: x|y|z, meters}), poisson_depth, trim_quantile (0.03), carve_views (2),
 carve_dilate_px (3), carve_depth_tol (0.02), min_component_ratio (0.1), hole_size (0.03 of the diagonal).
 """
@@ -26,6 +32,9 @@ import cv2
 import numpy as np
 import open3d as o3d
 
+from scipy.spatial import cKDTree
+
+from codemesh.pipeline import hull
 from codemesh.pipeline.cameras import Camera, load_cameras
 from codemesh.pipeline.fuse import find_mask
 
@@ -34,7 +43,7 @@ Mesh = o3d.geometry.TriangleMesh
 
 PRESET_DEPTH = {"draft": 8, "standard": 9, "high": 10}
 PRESET_TOL = {"draft": 0.004, "standard": 0.002, "high": 0.001}  # mean high->low distance / diagonal
-BUDGETS = (150_000, 100_000, 70_000, 50_000, 35_000, 25_000, 18_000, 12_000, 8_000, 5_000, 3_000, 2_000)
+BUDGETS = (150_000, 100_000, 70_000, 50_000, 35_000, 25_000, 18_000, 12_000, 8_000)  # 'auto' floor 8k
 ERROR_SAMPLES = 60_000
 
 
@@ -112,6 +121,32 @@ def carve(mesh: Mesh, job_dir: Path, cams: list[Camera], k: int, dilate_px: int,
     mesh.remove_triangles_by_mask(drop)
     mesh.remove_unreferenced_vertices()
     return int(drop.sum())
+
+
+def hull_depth(job_dir: Path, cams: list[Camera], pcd: o3d.geometry.PointCloud, settings: dict[str, Any],
+               preset: str) -> tuple[Mesh, dict[str, Any]]:
+    """Visual hull from the full-res masks, free-space carved by confident engine depth, surfaced
+    with Poisson on its iso-level points, Taubin-smoothed; vertex colors from the nearest fused point."""
+    floor = None
+    if settings.get("hull_floor", True) and len(pcd.points):  # support plane: lowest fused points
+        up = -np.mean([c.extrinsic_np[1, :3] for c in cams], axis=0)
+        up /= np.linalg.norm(up)
+        floor = (up, float(np.quantile(np.asarray(pcd.points) @ up, 0.005)))
+    occ, lo, voxel, st = hull.visual_hull(
+        job_dir, cams, int(settings.get("hull_resolution", hull.PRESET_RES[preset])),
+        dilate_px=int(settings.get("hull_dilate_px", 4)), max_outside=int(settings.get("hull_max_outside", 1)),
+        depth_tol=float(settings.get("hull_depth_tol", 0.03)), depth_votes=int(settings.get("hull_depth_votes", 2)),
+        floor=floor)
+    pts, nrm = hull.surface_points(occ, lo, voxel)
+    surf = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(pts))
+    surf.normals = o3d.utility.Vector3dVector(nrm)
+    mesh = poisson(surf, int(settings.get("poisson_depth", PRESET_DEPTH[preset] - 1)), 0.01)  # ~ hull grid res
+    mesh = mesh.filter_smooth_taubin(number_of_iterations=int(settings.get("hull_taubin", 5)))
+    if pcd.has_colors() and len(pcd.points):
+        _, nn = cKDTree(np.asarray(pcd.points)).query(np.asarray(mesh.vertices))
+        mesh.vertex_colors = o3d.utility.Vector3dVector(np.asarray(pcd.colors)[nn])
+    mesh.compute_vertex_normals()
+    return mesh, {"hull": {k: v for k, v in st.items() if k != "iou_per_view"}, "hull_iou_per_view": st["iou_per_view"]}
 
 
 def keep_large_components(mesh: Mesh, min_ratio: float) -> int:
@@ -243,16 +278,24 @@ def run(job_dir: Path, settings: dict[str, Any], progress: Progress | None = Non
     pcd = o3d.io.read_point_cloud(str(job_dir / "fuse" / "points.ply"))
     if not pcd.has_normals():
         raise RuntimeError("fuse/points.ply has no normals")
-    m: dict[str, Any] = {}
+    method = settings.get("mesh_method", "hull_depth")
+    if method not in ("hull_depth", "poisson"):
+        raise ValueError(f"mesh_method must be hull_depth|poisson, got {method!r}")
+    m: dict[str, Any] = {"method": method}
 
-    report(0.05, "poisson surface")
-    high = poisson(pcd, int(settings.get("poisson_depth", PRESET_DEPTH[preset])),
-                   float(settings.get("trim_quantile", 0.03)))
-    m["tris_poisson"] = len(high.triangles)
-    report(0.35, "visual-hull carve")
-    m["faces_carved"] = carve(high, job_dir, cams, int(settings.get("carve_views", 2)),
-                              int(settings.get("carve_dilate_px", 3)),
-                              float(settings.get("carve_depth_tol", 0.02)))
+    if method == "hull_depth":
+        report(0.05, "visual hull + depth carve")
+        high, info = hull_depth(job_dir, cams, pcd, settings, preset)
+        m.update(info, tris_poisson=len(high.triangles))
+    else:
+        report(0.05, "poisson surface")
+        high = poisson(pcd, int(settings.get("poisson_depth", PRESET_DEPTH[preset])),
+                       float(settings.get("trim_quantile", 0.03)))
+        m["tris_poisson"] = len(high.triangles)
+        report(0.35, "visual-hull carve")
+        m["faces_carved"] = carve(high, job_dir, cams, int(settings.get("carve_views", 2)),
+                                  int(settings.get("carve_dilate_px", 3)),
+                                  float(settings.get("carve_depth_tol", 0.02)))
     m["faces_small_components"] = keep_large_components(high, float(settings.get("min_component_ratio", 0.1)))
     if not len(high.triangles):
         raise RuntimeError("mesh: nothing left after carving; masks and cameras disagree")

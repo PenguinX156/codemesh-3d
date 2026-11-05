@@ -45,6 +45,8 @@ export interface Job {
   error?: string | null
   /** User choices as stored by the backend (selection, reconstruct, ...). */
   settings?: Record<string, unknown>
+  /** Frame index the backend recommends for selection (optional). */
+  best_frame?: number | null
 }
 
 export interface Frame {
@@ -54,6 +56,8 @@ export interface Frame {
   sharpness: number
   width: number
   height: number
+  /** True on the one frame the backend recommends for selection. */
+  best?: boolean
 }
 
 export interface PromptPoint {

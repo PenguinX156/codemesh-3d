@@ -6,11 +6,12 @@ import json
 import shutil
 from pathlib import Path
 
+import cv2
 import numpy as np
 import open3d as o3d
 import pytest
 
-from codemesh.pipeline import fuse, mesh
+from codemesh.pipeline import fuse, hull, mesh
 from synthetic import Scene, make_scene, mesh_distance
 
 
@@ -61,7 +62,8 @@ def test_mesh_fidelity_budget_and_frame(job: tuple[Path, Scene], tmp_path: Path)
     high, low = load_world_mesh(job_dir, "high"), load_world_mesh(job_dir, "low")
     assert chamfer_pct(high, scene) < 1.0
     assert chamfer_pct(low, scene) < 1.0
-    assert 2_000 <= m["tris_low"] <= 150_000 and m["tris_low"] < m["tris_high"]
+    assert m["method"] == "hull_depth" and m["hull"]["iou_mean"] > 0.85
+    assert 7_500 <= m["tris_low"] <= 150_000 and m["tris_low"] < m["tris_high"]
     assert low.has_vertex_colors() and low.is_edge_manifold()
     # Gravity frame: world +Z (true up) -> +Y, object standing on y = 0.
     M = np.array(json.loads((job_dir / "mesh" / "transform.json").read_text())["matrix"])
@@ -95,9 +97,50 @@ def test_carve_removes_outside_blob(job: tuple[Path, Scene], tmp_path: Path) -> 
     o3d.io.write_point_cloud(str(job_dir / "fuse" / "points.ply"), pcd + blob)
 
     def blob_vertices(settings: dict) -> int:
-        mesh.run(job_dir, {"preset": "draft", **settings})
+        mesh.run(job_dir, {"preset": "draft", "mesh_method": "poisson", **settings})
         v = np.asarray(load_world_mesh(job_dir, "high").vertices)
         return int((v[:, 0] > 0.33).sum())
 
     assert blob_vertices({"carve_views": 10_000}) > 100  # carve disabled: the blob is meshed
     assert blob_vertices({}) < 5
+
+
+def test_mesh_poisson_method_still_works(job: tuple[Path, Scene], tmp_path: Path) -> None:
+    job_dir = copy_job(job[0], tmp_path)
+    m = mesh.run(job_dir, {"preset": "draft", "mesh_method": "poisson"})
+    assert m["method"] == "poisson" and chamfer_pct(load_world_mesh(job_dir, "high"), job[1]) < 1.0
+    with pytest.raises(ValueError):
+        mesh.run(job_dir, {"mesh_method": "nope"})
+
+
+def test_visual_hull_matches_masks_and_depth_carves_inside(job: tuple[Path, Scene]) -> None:
+    """The hull reprojects onto every mask; depth carving only removes voxels, never the surface."""
+    job_dir, scene = job
+    cams = scene.cameras
+    occ, lo, voxel, st = hull.visual_hull(job_dir, cams, 128)
+    assert st["iou_min"] > 0.8 and st["center_ray_miss_over_radius_max"] < 0.2
+    occ_d, lo_d, _, st_d = hull.visual_hull(job_dir, cams, 128, depth_tol=0.03)
+    assert np.allclose(lo, lo_d) and (occ_d <= occ).all() and st_d["depth_views"] == len(cams)
+    # Depth carving removes empty space between hull and object (box + sphere, see synthetic.py), not the object.
+    gone = hull.grid_centers(lo, voxel, occ.shape)[(occ & ~occ_d).ravel()]
+    in_box = (np.abs(gone[:, 0]) < 0.3 - voxel) & (np.abs(gone[:, 1]) < 0.2 - voxel) & (gone[:, 2] > voxel) & (gone[:, 2] < 0.4 - voxel)
+    in_sphere = np.linalg.norm(gone - [0.1, 0.0, 0.5], axis=1) < 0.22 - voxel
+    assert (in_box | in_sphere).mean() < 0.05
+    pts, nrm = hull.surface_points(occ_d, lo, voxel)
+    d = mesh_distance(pts, scene.mesh)
+    assert np.median(d) < 2 * voxel  # iso-level points sit on the true surface
+    outward = ((pts - np.array([0.0, 0.0, 0.3])) * nrm).sum(1) > 0
+    assert outward.mean() > 0.9
+
+
+def test_visual_hull_drops_a_view_inconsistent_mask(job: tuple[Path, Scene], tmp_path: Path) -> None:
+    """One bad (empty-region) mask must not cut the hull: all-but-one views must agree."""
+    job_dir = copy_job(job[0], tmp_path)
+    cams = job[1].cameras
+
+    mp = fuse.find_mask(job_dir, cams[0])
+    m = cv2.imread(str(mp), cv2.IMREAD_GRAYSCALE)
+    m[: m.shape[0] // 2] = 0  # half the object vanishes in one view
+    cv2.imwrite(str(mp), m)
+    _, _, _, st = hull.visual_hull(job_dir, cams, 96)
+    assert st["iou_min"] > 0.4 and np.median(list(st["iou_per_view"].values())) > 0.8

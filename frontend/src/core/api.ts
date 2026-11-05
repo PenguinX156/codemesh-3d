@@ -89,6 +89,8 @@ export function createApi(baseUrl: string, fetchImpl: typeof fetch = (...a) => f
     reconstruct: (id: string, body: ReconstructSettings) =>
       request<unknown>(`/jobs/${id}/reconstruct`, json('POST', body)),
     refine: (id: string, instruction?: string) => request<unknown>(`/jobs/${id}/refine`, json('POST', { instruction })),
+    /** Fire-and-forget GPU warmup; callers ignore failures. */
+    warmup: () => request<unknown>('/warmup', { method: 'POST' }),
     deleteJob: (id: string) => request<void>(`/jobs/${id}`, { method: 'DELETE' }),
   }
 }

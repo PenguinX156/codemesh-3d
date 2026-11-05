@@ -1,0 +1,303 @@
+{
+  "views_evaluated": 24,
+  "iou_mean": 0.28208373129434405,
+  "boundary_f_mean": 0.07281461490882486,
+  "psnr_mean": 16.041278211829667,
+  "ssim_mean": 0.36217820706466836,
+  "iou_holdout_mean": null,
+  "chamfer_pct_mean": 6.132046788563306,
+  "seconds": 3.379077900000084,
+  "all": {
+    "views_evaluated": 24,
+    "iou_mean": 0.28208373129434405,
+    "boundary_f_mean": 0.07281461490882486,
+    "psnr_mean": 16.041278211829667,
+    "ssim_mean": 0.36217820706466836
+  },
+  "holdout": {
+    "views_evaluated": 0,
+    "iou_mean": null,
+    "boundary_f_mean": null,
+    "psnr_mean": null,
+    "ssim_mean": null
+  },
+  "geometry": {
+    "chamfer_pct_mean": 6.132046788563306,
+    "chamfer_pct_p90": 19.186221423257905,
+    "bbox_diagonal": 0.7697843404071301,
+    "bbox_source": "fuse/points.ply transformed to asset frame",
+    "surface_samples": 20000,
+    "point_samples": 20000
+  },
+  "views": [
+    {
+      "index": 0,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.2672324861671199,
+      "boundary_f": 0.11290223072245088,
+      "psnr": 18.62254533412098,
+      "ssim": 0.5441401600837708,
+      "appearance_pixels": 5699
+    },
+    {
+      "index": 2,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.38805883378873324,
+      "boundary_f": 0.14336523725529884,
+      "psnr": 20.401970796806978,
+      "ssim": 0.6410717368125916,
+      "appearance_pixels": 6675
+    },
+    {
+      "index": 3,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.3988306913386776,
+      "boundary_f": 0.11220920548553662,
+      "psnr": 21.122750145033407,
+      "ssim": 0.6469926238059998,
+      "appearance_pixels": 6617
+    },
+    {
+      "index": 5,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.46759768849752337,
+      "boundary_f": 0.1290121980387467,
+      "psnr": 20.696660612276393,
+      "ssim": 0.6439020037651062,
+      "appearance_pixels": 6797
+    },
+    {
+      "index": 7,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.47084348355663824,
+      "boundary_f": 0.12965924030842482,
+      "psnr": 18.98035183943323,
+      "ssim": 0.573188066482544,
+      "appearance_pixels": 6185
+    },
+    {
+      "index": 8,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.42541477568633285,
+      "boundary_f": 0.013293452974410104,
+      "psnr": 15.494262829139585,
+      "ssim": 0.3962980806827545,
+      "appearance_pixels": 5718
+    },
+    {
+      "index": 10,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.3162358408364798,
+      "boundary_f": 0.06033041125656403,
+      "psnr": 12.05075837714858,
+      "ssim": 0.11794351041316986,
+      "appearance_pixels": 5444
+    },
+    {
+      "index": 12,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.2668777889736577,
+      "boundary_f": 0.15608286933957233,
+      "psnr": 12.47667222167668,
+      "ssim": 0.1476934403181076,
+      "appearance_pixels": 5562
+    },
+    {
+      "index": 14,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.23194842406876792,
+      "boundary_f": 0.13644962470250807,
+      "psnr": 13.381053862772541,
+      "ssim": 0.1918458640575409,
+      "appearance_pixels": 4857
+    },
+    {
+      "index": 15,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.22052221172022685,
+      "boundary_f": 0.10096538449971429,
+      "psnr": 14.575009782125186,
+      "ssim": 0.2131175845861435,
+      "appearance_pixels": 3733
+    },
+    {
+      "index": 17,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.2784841841528343,
+      "boundary_f": 0.1136237513873474,
+      "psnr": 15.173103213981868,
+      "ssim": 0.3406931459903717,
+      "appearance_pixels": 4446
+    },
+    {
+      "index": 19,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.2568413521731354,
+      "boundary_f": 0.13210963737947473,
+      "psnr": 17.065564530116312,
+      "ssim": 0.41097331047058105,
+      "appearance_pixels": 4308
+    },
+    {
+      "index": 20,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.2358314907482835,
+      "boundary_f": 0.13652204714512609,
+      "psnr": 17.276122097918645,
+      "ssim": 0.3736408054828644,
+      "appearance_pixels": 4053
+    },
+    {
+      "index": 22,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.26078358009514135,
+      "boundary_f": 0.17811866991374012,
+      "psnr": 19.293164774959603,
+      "ssim": 0.45031049847602844,
+      "appearance_pixels": 4879
+    },
+    {
+      "index": 24,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.25432558139534883,
+      "boundary_f": 0.0467687074829932,
+      "psnr": 18.930720598914707,
+      "ssim": 0.5234063267707825,
+      "appearance_pixels": 5468
+    },
+    {
+      "index": 25,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.23246728497014357,
+      "boundary_f": 0.0,
+      "psnr": 15.49383919205366,
+      "ssim": 0.37161439657211304,
+      "appearance_pixels": 7319
+    },
+    {
+      "index": 27,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.23670510200146544,
+      "boundary_f": 0.0,
+      "psnr": 15.119936103676661,
+      "ssim": 0.3601260483264923,
+      "appearance_pixels": 12276
+    },
+    {
+      "index": 29,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.17587212224791393,
+      "boundary_f": 0.0,
+      "psnr": 14.857094718587959,
+      "ssim": 0.31347301602363586,
+      "appearance_pixels": 8747
+    },
+    {
+      "index": 31,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.22595115013265502,
+      "boundary_f": 0.03622728714486383,
+      "psnr": 15.71162616841609,
+      "ssim": 0.25819486379623413,
+      "appearance_pixels": 8261
+    },
+    {
+      "index": 32,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.20152742116005004,
+      "boundary_f": 0.009910802775024777,
+      "psnr": 12.880677881167173,
+      "ssim": 0.18195472657680511,
+      "appearance_pixels": 6122
+    },
+    {
+      "index": 34,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.26793029230021526,
+      "boundary_f": 0.0,
+      "psnr": 10.873719571614483,
+      "ssim": 0.13518255949020386,
+      "appearance_pixels": 7718
+    },
+    {
+      "index": 36,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.24678652945180796,
+      "boundary_f": 0.0,
+      "psnr": 14.3283516451418,
+      "ssim": 0.24629633128643036,
+      "appearance_pixels": 6163
+    },
+    {
+      "index": 37,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.23031303956159446,
+      "boundary_f": 0.0,
+      "psnr": 16.10956440375628,
+      "ssim": 0.31622350215911865,
+      "appearance_pixels": 6136
+    },
+    {
+      "index": 39,
+      "holdout": false,
+      "width": 576,
+      "height": 1024,
+      "iou": 0.2126281960395104,
+      "boundary_f": 0.0,
+      "psnr": 14.075156383073201,
+      "ssim": 0.29399436712265015,
+      "appearance_pixels": 4499
+    }
+  ],
+  "skipped": [],
+  "holdout_indices": [],
+  "psnr_cap_db": 100,
+  "boundary_tolerance_px": 2,
+  "ssim": "RGB, 11x11 Gaussian sigma=1.5, mask-normalized moments"
+}

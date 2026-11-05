@@ -136,3 +136,36 @@ def test_startup_marks_interrupted_jobs_failed(tmp_path: Path) -> None:
     store.close()
     with TestClient(create_app(jobs_dir=jobs_dir)) as c:
         assert c.get(f"/api/jobs/{job.id}").json()["status"] == "failed"
+
+
+def test_best_frame_is_sharpest_of_middle_60_percent() -> None:
+    from codemesh.api.routes import best_frame_index
+
+    frames = [{"sharpness": s} for s in (99, 1, 2, 5, 3, 4, 7, 8, 6, 98)]  # n=10 -> positions 2..7
+    assert best_frame_index(frames) == 7
+    assert best_frame_index([{"sharpness": 1.0}]) == 0
+
+
+def test_warmup_endpoint_is_idempotent(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    from codemesh.engines import factory
+
+    started = []
+    monkeypatch.setattr(factory, "_state", "cold")
+    monkeypatch.setattr(factory, "_engine", None)
+    monkeypatch.setattr(factory, "_warm", lambda: started.append(1))
+    first = client.post("/api/warmup").json()
+    second = client.post("/api/warmup").json()
+    assert first["state"] == second["state"] == "warming" and len(started) <= 1
+    assert client.get("/api/capabilities").json()["state"] == "warming"
+    monkeypatch.setattr(factory, "_state", "cold")  # keep module state clean for other tests
+
+
+def test_select_accepts_text_only_and_rejects_empty() -> None:
+    from pydantic import ValidationError
+
+    from codemesh.api.schemas import SelectRequest
+
+    assert SelectRequest(frame_index=0, text="red mug").points == []
+    for bad in ({}, {"text": "  "}):
+        with pytest.raises(ValidationError):
+            SelectRequest(frame_index=0, **bad)
