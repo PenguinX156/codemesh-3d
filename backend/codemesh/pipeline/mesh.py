@@ -31,6 +31,7 @@ from typing import Any
 import cv2
 import numpy as np
 import open3d as o3d
+import trimesh
 
 from scipy.spatial import cKDTree
 
@@ -140,7 +141,8 @@ def hull_depth(job_dir: Path, cams: list[Camera], pcd: o3d.geometry.PointCloud, 
     pts, nrm = hull.surface_points(occ, lo, voxel)
     surf = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(pts))
     surf.normals = o3d.utility.Vector3dVector(nrm)
-    mesh = poisson(surf, int(settings.get("poisson_depth", PRESET_DEPTH[preset] - 1)), 0.01)  # ~ hull grid res
+    # No density trim: the iso-points cover a closed surface, trimming only punches holes in it.
+    mesh = poisson(surf, int(settings.get("poisson_depth", PRESET_DEPTH[preset] - 1)), 0.0)  # ~ hull grid res
     mesh = mesh.filter_smooth_taubin(number_of_iterations=int(settings.get("hull_taubin", 5)))
     if pcd.has_colors() and len(pcd.points):
         _, nn = cKDTree(np.asarray(pcd.points)).query(np.asarray(mesh.vertices))
@@ -203,6 +205,48 @@ def fill_holes(mesh: Mesh, hole_size: float) -> int:
             mesh.vertex_colors = o3d.utility.Vector3dVector(np.vstack([colors, new_c]))
         mesh.compute_vertex_normals()
     return filled
+
+
+def repair(mesh: Mesh) -> tuple[Mesh, dict[str, Any]]:
+    """Closed game mesh: weld near-coincident vertices (collapses zero-area slivers), drop degenerate/
+    duplicate faces and non-manifold edges, fan-fill every boundary loop, keep the largest component,
+    orient faces consistently outward. Returns the mesh and its watertightness report."""
+    colors = np.asarray(mesh.vertex_colors) if mesh.has_vertex_colors() else None
+    eps = 1e-5 * diagonal(mesh)
+    tm = trimesh.Trimesh(np.asarray(mesh.vertices), np.asarray(mesh.triangles), vertex_colors=colors, process=False)
+    tm.vertices = np.round(tm.vertices / eps) * eps  # weld within eps: needle faces become index-degenerate
+    tm.merge_vertices()
+    tm.update_faces(tm.nondegenerate_faces(height=eps))
+    tm.update_faces(tm.unique_faces())
+    tm.remove_unreferenced_vertices()
+    out = Mesh(o3d.utility.Vector3dVector(tm.vertices), o3d.utility.Vector3iVector(tm.faces))
+    if colors is not None:
+        out.vertex_colors = o3d.utility.Vector3dVector(np.asarray(tm.visual.vertex_colors)[:, :3] / 255.0)
+    clean(out)
+    fill_holes(out, np.inf)
+    for _ in range(4):  # pinched loops (a vertex shared by two boundary loops) can't be fanned: shave a ring, refill
+        tris = np.asarray(out.triangles)
+        edges = np.sort(np.concatenate([tris[:, [0, 1]], tris[:, [1, 2]], tris[:, [2, 0]]]), axis=1)
+        uniq, cnt = np.unique(edges, axis=0, return_counts=True)
+        bverts = np.unique(uniq[cnt == 1])
+        if not len(bverts):
+            break
+        out.remove_triangles_by_mask(np.isin(tris, bverts).any(1))
+        clean(out)
+        fill_holes(out, np.inf)
+    labels = np.asarray(out.cluster_connected_triangles()[0])
+    out.remove_triangles_by_mask(labels != np.argmax(np.bincount(labels)))
+    out.remove_unreferenced_vertices()
+    tm =trimesh.Trimesh(np.asarray(out.vertices), np.asarray(out.triangles), process=False)
+    trimesh.repair.fix_normals(tm)  # consistent winding, outward (positive volume)
+    out.triangles = o3d.utility.Vector3iVector(tm.faces)
+    out.compute_vertex_normals()
+    edges = np.sort(tm.edges, axis=1)
+    _, cnt = np.unique(edges, axis=0, return_counts=True)
+    info = {"watertight": bool(tm.is_watertight), "winding_consistent": bool(tm.is_winding_consistent),
+            "boundary_edges": int((cnt == 1).sum()), "nonmanifold_edges": int((cnt > 2).sum()),
+            "components": int(len(tm.split(only_watertight=False))), "volume_positive": bool(tm.volume > 0)}
+    return out, info
 
 
 def distances(src: Mesh, dst: Mesh, n: int = ERROR_SAMPLES, seed: int = 0) -> np.ndarray:
@@ -301,12 +345,13 @@ def run(job_dir: Path, settings: dict[str, Any], progress: Progress | None = Non
         raise RuntimeError("mesh: nothing left after carving; masks and cameras disagree")
     diag = diagonal(high)
     m["holes_filled"] = fill_holes(clean(high), float(settings.get("hole_size", 0.03)) * diag)
-    high = clean(high)
+    high, m["repair_high"] = repair(clean(high))
     m["tris_high"] = len(high.triangles)
 
     report(0.55, "decimating")
     tol = PRESET_TOL[preset] * diag
     low, info = decimate(high, budget, tol)
+    low, m["repair_low"] = repair(low)  # decimation can open seams; the game mesh must be closed
     m.update(info, tris_low=len(low.triangles), budget=budget)
     d_hl, d_lh = distances(high, low), distances(low, high)
     m["mean_high_to_low_pct"] = round(100 * float(d_hl.mean()) / diag, 4)

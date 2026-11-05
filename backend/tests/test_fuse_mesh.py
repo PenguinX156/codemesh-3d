@@ -65,6 +65,8 @@ def test_mesh_fidelity_budget_and_frame(job: tuple[Path, Scene], tmp_path: Path)
     assert m["method"] == "hull_depth" and m["hull"]["iou_mean"] > 0.85
     assert 7_500 <= m["tris_low"] <= 150_000 and m["tris_low"] < m["tris_high"]
     assert low.has_vertex_colors() and low.is_edge_manifold()
+    assert m["repair_low"]["watertight"] and m["repair_low"]["components"] == 1 and m["repair_low"]["volume_positive"]
+    assert low.is_watertight() and low.is_orientable()
     # Gravity frame: world +Z (true up) -> +Y, object standing on y = 0.
     M = np.array(json.loads((job_dir / "mesh" / "transform.json").read_text())["matrix"])
     assert np.allclose(M[:3, :3] @ scene.up, [0, 1, 0], atol=1e-6)
@@ -144,3 +146,16 @@ def test_visual_hull_drops_a_view_inconsistent_mask(job: tuple[Path, Scene], tmp
     cv2.imwrite(str(mp), m)
     _, _, _, st = hull.visual_hull(job_dir, cams, 96)
     assert st["iou_min"] > 0.4 and np.median(list(st["iou_per_view"].values())) > 0.8
+
+
+def test_repair_closes_holes_drops_strays_orients_outward() -> None:
+    box = o3d.geometry.TriangleMesh.create_box().subdivide_midpoint(2)
+    tris = np.asarray(box.triangles)
+    tris = tris[np.argsort(np.asarray(box.vertices)[tris].mean(1)[:, 2])][4:]  # punch a hole in the bottom
+    tris[:10] = tris[:10, ::-1]  # flip some winding
+    stray = o3d.geometry.TriangleMesh.create_tetrahedron(0.05).translate((3, 3, 3))
+    broken = o3d.geometry.TriangleMesh(box.vertices, o3d.utility.Vector3iVector(tris)) + stray
+    fixed, info = mesh.repair(broken)
+    assert info == {"watertight": True, "winding_consistent": True, "boundary_edges": 0, "nonmanifold_edges": 0,
+                    "components": 1, "volume_positive": True}
+    assert fixed.is_watertight() and fixed.get_max_bound()[0] < 1.5

@@ -11,9 +11,9 @@ Steps:
   3. Normal bake: ray from each texel along +/- the low normal onto the high mesh; the high mesh's
      smooth normal at the hit is stored in the low mesh's tangent frame (glTF: +Y green). The hit
      point is also the position used for color projection (closer to what the photos saw).
-  4. Per view: project into the full-res camera; visible if inside the image, inside the dilated
+  4. Per view: project into the full-res camera; visible if inside the image, inside the eroded
      mask, facing the camera and not occluded (z vs. a ray-cast depth map of the high mesh at
-     reduced resolution). Weight = cos^p * (f/z)^2 * frame sharpness; keep the top-k views per
+     reduced resolution). Weight = cos^p * (f/z)^2 * sharpness^2; keep the top-k views per
      texel, optionally solve per-view RGB gains (log least squares on texels seen twice) to hide
      exposure seams, then blend. Colors are bilinear samples of the original frames.
   5. Unseen texels and the atlas gutter are filled by push-pull, so mip levels do not bleed.
@@ -43,13 +43,13 @@ Progress = Callable[[float, str], None] | None
 DEFAULTS: dict[str, Any] = {
     "texture_size": 2048,
     "top_k": 3,
-    "angle_power": 2.0,
+    "angle_power": 4.0,  # grazing views smear the background into the texture
     "min_cos": 0.15,  # reject views more grazing than ~81 deg
     "exposure_normalize": True,
     "depth_res": 800,  # long side of the visibility depth maps
     "occlusion_tol": 0.005,  # fraction of the bbox diagonal
     "bake_max_dist": 0.03,  # fraction of the bbox diagonal (low <-> high search distance)
-    "mask_dilate": 0.004,  # fraction of the image diagonal
+    "mask_erode": 0.004,  # fraction of the image diagonal: silhouette pixels are mixed with the background
 }
 
 
@@ -322,8 +322,8 @@ def run(job_dir: Path, settings: dict, progress: Progress = None) -> dict[str, A
         vis &= cos > cfg["min_cos"]
         mask = load_mask(job_dir, cam)
         if mask is not None:
-            r = max(1, round(cfg["mask_dilate"] * np.hypot(W, H)))
-            mask = cv2.dilate(mask, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1, 2 * r + 1)))
+            r = max(1, round(cfg["mask_erode"] * np.hypot(W, H)))
+            mask = cv2.erode(mask, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1, 2 * r + 1)))
             idx = np.flatnonzero(vis)
             vis[idx] = mask[np.rint(y[idx]).astype(int), np.rint(x[idx]).astype(int)] > 127
         idx = np.flatnonzero(vis)
@@ -337,7 +337,7 @@ def run(job_dir: Path, settings: dict, progress: Progress = None) -> dict[str, A
         if len(idx) == 0:
             continue
         views_used += 1
-        w = (cos[idx] ** cfg["angle_power"]) * (K[0, 0] / z[idx] / 1000) ** 2 * (frame_sharpness(img) + 1e-6)
+        w = (cos[idx] ** cfg["angle_power"]) * (K[0, 0] / z[idx] / 1000) ** 2 * (frame_sharpness(img) + 1e-6) ** 2
         col = sample_bilinear(img, x[idx], y[idx])[:, ::-1].astype(np.float32)  # BGR -> RGB
         all_w = np.concatenate([best_w[idx], w[:, None].astype(np.float32)], 1)
         all_c = np.concatenate([best_c[idx], col[:, None]], 1)
