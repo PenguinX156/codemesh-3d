@@ -132,7 +132,7 @@ export function UploadPanel({ disabled }: { disabled: boolean }) {
       <button type="button" className="btn primary" disabled={!canSubmit} onClick={submit}>
         {busy ? 'Uploading…' : 'Upload and start'}
       </button>
-      {disabled && <p className="muted small">The backend is offline, so uploading is unavailable.</p>}
+      {disabled && <p className="muted small">Connecting to the backend… uploading unlocks once it responds.</p>}
     </section>
   )
 }
