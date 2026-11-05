@@ -190,7 +190,8 @@ def artifact(request: Request, job_id: str, rel_path: str) -> FileResponse:
     path = _paths(request, job_id).resolve_artifact(rel_path)
     if path is None:
         raise HTTPException(404, "artifact not found")
-    return FileResponse(path)
+    # Artifacts keep their names across reruns (model.glb); force revalidation so a rebuild is never shown stale.
+    return FileResponse(path, headers={"Cache-Control": "no-cache"})
 
 
 @router.delete("/jobs/{job_id}")
