@@ -2,7 +2,7 @@
 
 Record the screen (Windows: Win+Alt+R with Xbox Game Bar, or OBS). Upload to YouTube as Unlisted, paste the link in the form.
 Have ready: the app at http://localhost:5180 (or the Modal URL), a finished mug job, and the kettle video.
-Phone-sized window for recording: `.scriptsmobile_window.ps1` (hosted) or `.scriptsmobile_window.ps1 -Local`. Best demo videos: kettle (IMG_8175) and mug (IMG_8176).
+Phone-sized window for recording: `scripts/mobile_window.ps1` (hosted) or `scripts/mobile_window.ps1 -Local`. Best demo videos: kettle (IMG_8175) and mug (IMG_8176).
 
 | Time | Show | Say (roughly) |
 |---|---|---|
