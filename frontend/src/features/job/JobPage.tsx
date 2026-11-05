@@ -2,8 +2,7 @@ import { lazy, Suspense } from 'react'
 import { api } from '../../app/client'
 import { useJob } from '../../app/hooks'
 import { hrefs } from '../../app/router'
-import { formatCount, formatSeconds } from '../../core/format'
-import { DownloadButton } from '../export/DownloadButton'
+import { ResultPanel } from '../result/ResultPanel'
 import { ProgressView } from '../progress/ProgressView'
 import { SelectView } from '../select/SelectView'
 import { SettingsPanel } from '../settings/SettingsPanel'
@@ -53,7 +52,6 @@ export function JobPage({ id }: { id: string }) {
       )
     case 'done': {
       const glb = job.artifacts.model_glb ? api.artifactUrl(job.id, job.artifacts.model_glb) : null
-      const total = job.stages.reduce((s, st) => s + (st.seconds ?? 0), 0)
       return (
         <>
           {offlineBanner}
@@ -70,17 +68,7 @@ export function JobPage({ id }: { id: string }) {
               )}
             </div>
             <div className="panel">
-              <section className="card" aria-labelledby="result-title">
-                <h2 id="result-title">Result</h2>
-                <dl className="kv num">
-                  <dt>Total time</dt>
-                  <dd>{formatSeconds(total)}</dd>
-                  {Object.entries(job.metrics).map(([k, v]) => (
-                    <MetricRow key={k} name={k} value={v} />
-                  ))}
-                </dl>
-                {glb && <DownloadButton url={glb} filename="model.glb" />}
-              </section>
+              <ResultPanel job={job} glb={glb} />
               <SettingsPanel jobId={job.id} onStarted={reload} submitLabel="Reconstruct again" />
             </div>
           </div>
@@ -88,6 +76,16 @@ export function JobPage({ id }: { id: string }) {
       )
     }
     default:
+      // A failed run keeps the ingested frames, so let the user fix the selection or settings and retry.
+      if (job.status === 'failed' && job.artifacts.frames_json)
+        return (
+          <>
+            {offlineBanner}
+            <SelectView job={job} onSegmenting={reload} notice={<ProgressView job={job} />}>
+              {job.artifacts.masks_preview && <SettingsPanel jobId={job.id} onStarted={reload} />}
+            </SelectView>
+          </>
+        )
       return (
         <div className="narrow">
           {offlineBanner}
@@ -102,15 +100,4 @@ export function JobPage({ id }: { id: string }) {
         </div>
       )
   }
-}
-
-function MetricRow({ name, value }: { name: string; value: unknown }) {
-  if (value == null || typeof value === 'object') return null
-  const text = typeof value === 'number' ? (Number.isInteger(value) ? formatCount(value) : value.toFixed(3)) : String(value)
-  return (
-    <>
-      <dt>{name.replace(/_/g, ' ')}</dt>
-      <dd>{text}</dd>
-    </>
-  )
 }

@@ -4,10 +4,11 @@ import { test } from 'node:test'
 import { createApi } from './api.ts'
 import { pollJob } from './jobPoller.ts'
 import { parseTriangleBudget } from './presets.ts'
+import { compareArtifacts, summarize } from './summary.ts'
 import type { Job } from './types.ts'
 
 const job = (status: Job['status']): Job => ({
-  id: 'j1', created_at: '', mode: 'walkaround', status, stage: null, progress: 0, message: '', stages: [], artifacts: {}, metrics: {},
+  id: 'j1', created_at: 0, mode: 'walkaround', status, stage: null, progress: 0, message: '', stages: [], artifacts: {}, metrics: {},
 })
 
 test('resolveUrl and artifactUrl honour the injected base', () => {
@@ -51,4 +52,19 @@ test('parseTriangleBudget clamps and falls back to auto', () => {
   assert.equal(parseTriangleBudget('10'), 500)
   assert.equal(parseTriangleBudget('25000'), 25000)
   assert.equal(parseTriangleBudget('9e9'), 2_000_000)
+})
+
+test('summarize reads headline metrics from stages and the scale source from settings', () => {
+  const j = {
+    ...job('done'),
+    stages: [
+      { name: 'geometry', status: 'done' as const, seconds: 1, metrics: { engine: 'torch' } },
+      { name: 'evaluate', status: 'done' as const, seconds: 1, metrics: { iou_holdout_mean: 0.9, psnr_mean: 24, triangles: 100 } },
+    ],
+    settings: { reconstruct: { known_dimension: { axis: 'y', meters: 0.2 } } },
+    artifacts: { compare_10: 'c10.png', compare_2: 'c2.png', model_glb: 'm.glb' },
+  }
+  const s = summarize(j)
+  assert.deepEqual([s.iou, s.psnr, s.ssim, s.triangles, s.engine, s.measuredScale], [0.9, 24, null, 100, 'torch', true])
+  assert.deepEqual(compareArtifacts(j).map(([k]) => k), ['compare_2', 'compare_10'])
 })

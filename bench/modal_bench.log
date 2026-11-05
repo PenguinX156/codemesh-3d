@@ -1,0 +1,12 @@
+✓ Initialized. View run at 
+https://modal.com/apps/fjziemski/main/ap-Iz9aGcCZjyvzZE5QG1dXTA
+✓ Created objects.
+├── ✓ Uploaded C:\Users\Filip\Dev\Projects\Meshify Capture\deploy\modal_app.py
+├── ✓ Uploaded C:\Users\Filip\Dev\Projects\Meshify Capture\frontend\dist
+├── ✓ Uploaded C:\Users\Filip\Dev\Projects\Meshify Capture\backend\codemesh
+├── ✓ Uploaded C:\Users\Filip\Dev\Projects\Meshify 
+│   Capture\third_party\map-anything
+├── ✓ Created Function download_weights.
+├── ✓ Created Function GeometryWorker.*.
+└── ✓ Created Function web
+    └── https://fjziemski--codemesh-web-dev.us-east.modal.run (unauthenticated)

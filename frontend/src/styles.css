@@ -748,3 +748,6 @@ legend {
     padding: 6px 10px;
   }
 }
+
+.compare-list { display: grid; gap: 0.5rem; }
+.compare-list img { width: 100%; display: block; border-radius: 6px; border: 1px solid var(--border, #333); }

@@ -42,7 +42,7 @@ export function RecentJobs() {
               <a href={hrefs.job(j.id)}>
                 <span className="num">{j.id.slice(0, 8)}</span>
                 <span className="muted small">
-                  {titleCase(j.mode)} &middot; <time dateTime={j.created_at}>{new Date(j.created_at).toLocaleString()}</time>
+                  {titleCase(j.mode)} &middot; <time dateTime={new Date(j.created_at * 1000).toISOString()}>{new Date(j.created_at * 1000).toLocaleString()}</time>
                 </span>
               </a>
               <span className={`pill ${j.status}`}>{titleCase(j.status)}</span>

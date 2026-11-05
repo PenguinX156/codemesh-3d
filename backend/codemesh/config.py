@@ -20,5 +20,5 @@ JOBS_DIR = Path(os.getenv("CODEMESH_JOBS_DIR", REPO_ROOT / "jobs"))
 MODELS_DIR = Path(os.getenv("CODEMESH_MODELS_DIR", REPO_ROOT / "models"))
 THIRD_PARTY_DIR = REPO_ROOT / "third_party"
 BLENDER_EXE = os.getenv("BLENDER_EXE", str(THIRD_PARTY_DIR / "blender" / "blender.exe"))
-GEOMETRY_ENGINE = os.getenv("CODEMESH_GEOMETRY_ENGINE", "auto")  # auto | ggml | torch
+GEOMETRY_ENGINE = os.getenv("CODEMESH_GEOMETRY_ENGINE", "auto")  # auto | modal | torch | rocm
 CORS_ORIGINS = [o for o in os.getenv("CODEMESH_CORS_ORIGINS", "http://localhost:5173").split(",") if o]

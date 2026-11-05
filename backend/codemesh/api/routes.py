@@ -13,6 +13,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 
 from codemesh import __version__, config
+from codemesh.engines import factory
 from codemesh.jobs.models import Job
 from codemesh.jobs.paths import JobPaths, job_paths
 from codemesh.jobs.runner import JobBusyError, Runner
@@ -71,14 +72,15 @@ def health() -> Health:
 
 @router.get("/capabilities", response_model=Capabilities)
 def capabilities(request: Request) -> Capabilities:
-    # shortcut: engine details are 'unknown' until the geometry lane registers a real engine probe.
+    # Engine details come from the loaded engine; before the first reconstruct only the config is known.
+    info = factory.loaded_engine_info() or {}
     return Capabilities(
-        geometry_engine=config.GEOMETRY_ENGINE,
-        device="unknown",
-        precision="unknown",
+        geometry_engine=info.get("engine", config.GEOMETRY_ENGINE),
+        device=str(info.get("device", "unknown")),
+        precision=str(info.get("precision", "unknown")),
         blender=Path(config.BLENDER_EXE).is_file(),
         meta_api=bool(config.META_API_KEY),
-        engines={"torch": find_spec("torch") is not None},
+        engines={"torch": find_spec("torch") is not None, "modal": find_spec("modal") is not None},
         heic=HEIF_SUPPORTED,
         max_upload_bytes=request.app.state.max_upload_bytes,
     )

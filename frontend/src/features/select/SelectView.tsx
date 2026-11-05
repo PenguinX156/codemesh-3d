@@ -11,13 +11,15 @@ interface Props {
   onSegmenting: () => void
   /** Extra panel content, e.g. reconstruct settings once masks exist. */
   children?: ReactNode
+  /** Shown above the selection card, e.g. why the previous run failed. */
+  notice?: ReactNode
 }
 
 /**
  * Pick the object: click = include, Alt/right-click or "Exclude" mode = exclude.
  * Keyboard: focus the frame, arrows move the cursor, Enter includes, Shift+Enter excludes.
  */
-export function SelectView({ job, onSegmenting, children }: Props) {
+export function SelectView({ job, onSegmenting, children, notice }: Props) {
   const [frames, setFrames] = useState<Frame[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [current, setCurrent] = useState(0)
@@ -140,6 +142,7 @@ export function SelectView({ job, onSegmenting, children }: Props) {
       </div>
 
       <div className="panel">
+        {notice}
         <section className="card" aria-labelledby="select-title">
           <h2 id="select-title">Select the object</h2>
           <p className="muted small">

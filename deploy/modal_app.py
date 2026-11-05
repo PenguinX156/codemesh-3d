@@ -131,7 +131,11 @@ def bench(n: int = 8) -> None:
 
     from PIL import Image
 
-    paths = sorted((ROOT / "third_party" / "vggt" / "examples" / "kitchen" / "images").iterdir())[:n]
+    img_dir = ROOT / "third_party" / "vggt" / "examples" / "kitchen" / "images"
+    runs = json.loads((ROOT / "bench" / "phase0" / "out" / "reference_results.json").read_text())
+    ref_run = next((r for r in runs if r["model"] == "mapanything" and r["set"] == "kitchen" and r["n"] == n), None)
+    # Use the reference's exact frames, otherwise the accuracy comparison is meaningless.
+    paths = [img_dir / f for f in ref_run["frames"]] if ref_run else sorted(img_dir.iterdir())[:n]
     frames = [encode_image(np.asarray(Image.open(p).convert("RGB"))) for p in paths]
     worker = GeometryWorker()
     t0 = time.perf_counter()

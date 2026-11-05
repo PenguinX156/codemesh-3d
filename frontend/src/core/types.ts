@@ -32,7 +32,8 @@ export interface JobArtifacts {
 
 export interface Job {
   id: string
-  created_at: string
+  /** Unix epoch seconds (backend `time.time()`). */
+  created_at: number
   mode: JobMode
   status: JobStatus
   stage: string | null
@@ -42,6 +43,8 @@ export interface Job {
   artifacts: JobArtifacts
   metrics: Record<string, MetricValue>
   error?: string | null
+  /** User choices as stored by the backend (selection, reconstruct, ...). */
+  settings?: Record<string, unknown>
 }
 
 export interface Frame {
@@ -49,6 +52,8 @@ export interface Frame {
   url: string
   thumb_url: string
   sharpness: number
+  width: number
+  height: number
 }
 
 export interface PromptPoint {
@@ -86,6 +91,9 @@ export interface Capabilities {
   precision: string
   blender: boolean
   meta_api: boolean
+  engines: Record<string, boolean>
+  heic: boolean
+  max_upload_bytes: number
 }
 
 /** Statuses after which the job will not change without a user action. */

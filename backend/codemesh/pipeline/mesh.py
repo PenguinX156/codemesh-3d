@@ -11,7 +11,7 @@ when it lowers the error. Both meshes are then moved into a gravity-aligned obje
 
 Settings: preset (draft|standard|high), triangle_budget ("auto"|int), known_dimension
 ({axis: x|y|z, meters}), poisson_depth, trim_quantile (0.03), carve_views (2),
-carve_dilate_px (3), min_component_ratio (0.1), hole_size (0.03 of the diagonal).
+carve_dilate_px (3), carve_depth_tol (0.02), min_component_ratio (0.1), hole_size (0.03 of the diagonal).
 """
 
 from __future__ import annotations
@@ -60,13 +60,31 @@ def poisson(pcd: o3d.geometry.PointCloud, depth: int, trim_quantile: float) -> M
     return mesh
 
 
-def carve(mesh: Mesh, job_dir: Path, cams: list[Camera], k: int, dilate_px: int) -> int:
-    """Visual-hull carve in place: drop faces whose centroid lies in front of >= k cameras and
-    projects inside their image but outside the (dilated) object mask. Returns faces removed."""
+def _engine_depths(job_dir: Path) -> dict[int, tuple[np.ndarray, np.ndarray]]:
+    """frame index -> (engine depth min-filtered 3x3, original->engine pixel map) from geometry/views.npz."""
+    path = job_dir / "geometry" / "views.npz"
+    if not path.exists():
+        return {}
+    with np.load(path) as npz:
+        views = {k: npz[k] for k in ("frame_indices", "depth", "pixel_to_original")}
+    kernel = np.ones((3, 3), np.uint8)  # min-filter: silhouette pixels mixing in background depth never vote "free"
+    return {int(idx): (cv2.erode(np.nan_to_num(views["depth"][i].astype(np.float32), nan=0, posinf=0, neginf=0), kernel),
+                       np.linalg.inv(views["pixel_to_original"][i]))
+            for i, idx in enumerate(views["frame_indices"])}
+
+
+def carve(mesh: Mesh, job_dir: Path, cams: list[Camera], k: int, dilate_px: int, depth_tol: float = 0.0) -> int:
+    """Visual-hull + free-space carve in place. A face votes "outside" in a camera when its centroid
+    is in front of it and projects inside the image but outside the (dilated) object mask, or (with
+    depth_tol > 0) lies more than depth_tol * depth in front of the engine depth seen there: the
+    camera saw through that spot, so it is empty space. Faces with >= k votes are dropped.
+    The depth test catches blobs glued to the object that stay inside every silhouette.
+    Returns faces removed."""
     tris = np.asarray(mesh.triangles)
     cent = np.asarray(mesh.vertices)[tris].mean(axis=1)
     outside = np.zeros(len(cent), np.int32)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * dilate_px + 1,) * 2) if dilate_px > 0 else None
+    depths = _engine_depths(job_dir) if depth_tol > 0 else {}
     for cam in cams:
         mask = cv2.imread(str(find_mask(job_dir, cam)), cv2.IMREAD_GRAYSCALE) >= 128
         if kernel is not None:  # tolerate mask boundary error before calling a face "outside"
@@ -74,12 +92,22 @@ def carve(mesh: Mesh, job_dir: Path, cams: list[Camera], k: int, dilate_px: int)
         E, K = cam.extrinsic_np, cam.K_np
         pc = cent @ E[:3, :3].T + E[:3, 3]
         front = pc[:, 2] > 1e-6
-        uv = pc[front] @ K.T
-        uv = np.rint(uv[:, :2] / uv[:, 2:]).astype(np.int64)
+        uvw = pc[front] @ K.T
+        uv = np.rint(uvw[:, :2] / uvw[:, 2:]).astype(np.int64)
         h, w = mask.shape
         inside = (uv[:, 0] >= 0) & (uv[:, 0] < w) & (uv[:, 1] >= 0) & (uv[:, 1] < h)
         idx = np.flatnonzero(front)[inside]
-        outside[idx] += ~mask[uv[inside, 1], uv[inside, 0]]
+        vote = ~mask[uv[inside, 1], uv[inside, 0]]
+        if cam.index in depths:
+            depth, o2p = depths[cam.index]
+            ep = uvw[inside] @ o2p.T
+            eu, ev = (np.rint(ep[:, :2] / ep[:, 2:]).astype(np.int64)).T
+            eh, ew = depth.shape
+            ok = (eu >= 0) & (eu < ew) & (ev >= 0) & (ev < eh)
+            d = np.zeros(len(idx), np.float32)
+            d[ok] = depth[ev[ok], eu[ok]]
+            vote |= (d > 0) & (pc[idx, 2] < d * (1 - depth_tol))
+        outside[idx] += vote
     drop = outside >= k
     mesh.remove_triangles_by_mask(drop)
     mesh.remove_unreferenced_vertices()
@@ -223,7 +251,8 @@ def run(job_dir: Path, settings: dict[str, Any], progress: Progress | None = Non
     m["tris_poisson"] = len(high.triangles)
     report(0.35, "visual-hull carve")
     m["faces_carved"] = carve(high, job_dir, cams, int(settings.get("carve_views", 2)),
-                              int(settings.get("carve_dilate_px", 3)))
+                              int(settings.get("carve_dilate_px", 3)),
+                              float(settings.get("carve_depth_tol", 0.02)))
     m["faces_small_components"] = keep_large_components(high, float(settings.get("min_component_ratio", 0.1)))
     if not len(high.triangles):
         raise RuntimeError("mesh: nothing left after carving; masks and cameras disagree")

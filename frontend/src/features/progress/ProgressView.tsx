@@ -27,7 +27,7 @@ export function ProgressView({ job }: { job: Job }) {
         <div className={`bar-fill${failed ? ' failed' : ''}`} style={{ width: formatPercent(job.progress) }} />
       </div>
       <p className="num small">
-        {formatPercent(job.progress)} <span className="muted" aria-live="polite">&middot; {job.message}</span>
+        {formatPercent(job.progress)} <span className="muted" aria-live="polite">&middot; {failed && job.message === job.error ? 'stopped' : job.message}</span>
       </p>
 
       {job.error && (

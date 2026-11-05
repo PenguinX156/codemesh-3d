@@ -40,7 +40,11 @@ def test_health_and_capabilities(client: TestClient) -> None:
     assert "META_API_KEY" not in str(caps)
 
 
-def test_video_job_flow(client: TestClient, tmp_path: Path) -> None:
+def test_video_job_flow(client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def offline(*args, **kwargs):
+        raise RuntimeError("SAM is offline in tests")
+
+    monkeypatch.setattr("codemesh.meta.sam.segment_video", offline)  # never call the paid API from tests
     job = _upload_video(client, tmp_path)
     assert job["input"]["kind"] == "video" and job["settings"]["preset"] == "draft"
     _wait(client)
@@ -54,7 +58,7 @@ def test_video_job_flow(client: TestClient, tmp_path: Path) -> None:
     assert client.get(frames[0]["thumb_url"]).status_code == 200
     assert [j["id"] for j in client.get("/api/jobs").json()] == [job["id"]]
 
-    # Stub stages: accepted, validated, then fail with a clear message.
+    # Segment (SAM stubbed offline) and reconstruct: accepted, validated, then fail with a clear message.
     assert client.post(f"/api/jobs/{job['id']}/select", json={"frame_index": 99, "text": "mug"}).status_code == 422
     assert client.post(f"/api/jobs/{job['id']}/select", json={"frame_index": 0}).status_code == 422
     res = client.post(f"/api/jobs/{job['id']}/select",
@@ -62,7 +66,7 @@ def test_video_job_flow(client: TestClient, tmp_path: Path) -> None:
     assert res.status_code == 200 and res.json()["status"] == "segmenting"
     _wait(client)
     job = client.get(f"/api/jobs/{job['id']}").json()
-    assert job["status"] == "failed" and "not implemented yet" in job["error"]
+    assert job["status"] == "failed" and "SAM is offline" in job["error"]
     assert job["settings"]["selection"]["points"][0]["label"] == 1
 
     assert client.post(f"/api/jobs/{job['id']}/reconstruct", json={"texture_size": 1000}).status_code == 422
