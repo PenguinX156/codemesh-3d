@@ -43,7 +43,7 @@ def run_stage(store: JobStore, job: Job, paths, action: str, name: str, settings
 def test_registry_has_all_stages() -> None:
     assert [s.name for s in ACTIONS["segment"].stages] == ["segment"]
     assert [s.name for s in ACTIONS["reconstruct"].stages] == ["geometry", "fuse", "mesh", "texture", "export",
-                                                               "evaluate", "agent"]
+                                                               "evaluate", "agent", "quality"]
     flat = reconstruct_settings({"preset": "standard", "selection": {}, "reconstruct": {"preset": "draft",
                                                                                        "known_dimension": None}})
     assert flat == {"preset": "draft"}

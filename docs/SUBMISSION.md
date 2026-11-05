@@ -6,7 +6,7 @@ Form: https://cerebralvalley.ai/e/meta-ai-developer-hackathon/hackathon/submit (
 ## Suggested choices
 - Track: **Indie Developer Track** (solo; judged on creativity, technical ambition, whether it works)
 - Problem statement: **Push the Frontier** (gives a machine a new capability: turning ordinary video into usable 3D objects)
-- Public GitHub repository: (fill after pushing)
+- Public GitHub repository: https://github.com/PenguinX156/codemesh-3d
 - 3-minute demo video: (fill after uploading, e.g. YouTube unlisted)
 - Live app: https://fjziemski--codemesh-web.us-east.modal.run
 
