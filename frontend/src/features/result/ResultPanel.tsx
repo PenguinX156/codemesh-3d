@@ -7,37 +7,72 @@ import { DownloadButton } from '../export/DownloadButton'
 
 const fixed = (v: number | null, digits: number, unit = '') => (v == null ? 'n/a' : `${v.toFixed(digits)}${unit}`)
 
-/** Finished-job side panel: headline metrics, per-stage timings, scale note, download and held-out comparisons. */
+type Quality = { grade?: string; passed?: boolean; failed_checks?: string[]; hints?: string[] }
+
+const gradeTone = (g?: string) => (g === 'A' || g === 'B' ? 'ok' : g === 'C' ? 'warn' : 'bad')
+
+/** Finished-job side panel: download first, then headline metrics, quality grade, agent decisions, timings. */
 export function ResultPanel({ job, glb }: { job: Job; glb: string | null }) {
   const s = summarize(job)
   const total = job.stages.reduce((sum, st) => sum + (st.seconds ?? 0), 0)
-  const rows: [string, string][] = [
-    ['Silhouette IoU', fixed(s.iou, 3)],
-    ['Masked PSNR', fixed(s.psnr, 1, ' dB')],
-    ['Masked SSIM', fixed(s.ssim, 3)],
-    ['Triangles', s.triangles == null ? 'n/a' : formatCount(s.triangles)],
-    ['Texture', s.textureSize == null ? 'n/a' : `${s.textureSize} × ${s.textureSize}`],
-    ['Geometry engine', s.engine ?? 'n/a'],
+  const quality = job.stages.find((st) => st.name === 'quality')?.metrics as Quality | undefined
+  const metrics: { label: string; value: string; hint: string }[] = [
+    { label: 'Shape score', value: s.iou == null ? 'n/a' : `${Math.round(s.iou * 100)}%`, hint: `Silhouette IoU ${fixed(s.iou, 3)}` },
+    { label: 'Triangles', value: s.triangles == null ? 'n/a' : formatCount(s.triangles), hint: 'Game-ready mesh' },
+    { label: 'Texture', value: s.textureSize == null ? 'n/a' : `${s.textureSize}²`, hint: 'Baked albedo' },
+    { label: 'Photo match', value: fixed(s.psnr, 1, ' dB'), hint: `Masked SSIM ${fixed(s.ssim, 3)}` },
   ]
   const compares = compareArtifacts(job)
 
   return (
     <>
-      <section className="card" aria-labelledby="result-title">
-        <h2 id="result-title">Result</h2>
-        <dl className="kv num">
-          {rows.map(([k, v]) => (
-            <Row key={k} name={k} value={v} />
-          ))}
-        </dl>
+      <section className="card result-head" aria-labelledby="result-title">
+        <div className="result-title-row">
+          <h2 id="result-title">Your 3D asset</h2>
+          {quality?.grade && (
+            <span className={`grade ${gradeTone(quality.grade)}`} title={quality.passed ? 'All quality checks passed' : 'Some quality checks failed'}>
+              Grade {quality.grade}
+            </span>
+          )}
+        </div>
+        {glb && <DownloadButton url={glb} filename="model.glb" />}
         <p className="muted small" data-testid="scale-note">
           {s.measuredScale
             ? 'Measured: the size is scaled to the dimension you entered.'
-            : 'Estimated: with no known dimension the size is the geometry model’s estimate, not a measurement. Enter one real dimension and reconstruct again to get a measured scale.'}{' '}
-          Quality scores are measured on held-out photos against the SAM masks and the photos themselves.
+            : 'Size is estimated by the geometry model. Enter one real dimension and reconstruct again for a measured scale.'}
         </p>
-        {glb && <DownloadButton url={glb} filename="model.glb" />}
       </section>
+
+      <div className="metric-grid" role="list">
+        {metrics.map((m) => (
+          <div key={m.label} className="metric" role="listitem">
+            <span className="metric-label">{m.label}</span>
+            <span className="metric-value num">{m.value}</span>
+            <span className="metric-hint">{m.hint}</span>
+          </div>
+        ))}
+      </div>
+
+      {quality && ((quality.failed_checks?.length ?? 0) > 0 || (quality.hints?.length ?? 0) > 0) && (
+        <section className="card" aria-labelledby="quality-title">
+          <h2 id="quality-title">Quality check</h2>
+          {(quality.failed_checks?.length ?? 0) > 0 && (
+            <p className="small">
+              Needs work:{' '}
+              {quality.failed_checks!.map((c) => (
+                <code key={c}>{c}</code>
+              ))}
+            </p>
+          )}
+          {quality.hints?.map((h) => (
+            <p key={h} className="small muted hint">
+              {h}
+            </p>
+          ))}
+        </section>
+      )}
+
+      <AgentCard job={job} />
 
       <section className="card" aria-labelledby="timings-title">
         <h2 id="timings-title">Stage timings</h2>
@@ -63,7 +98,6 @@ export function ResultPanel({ job, glb }: { job: Job; glb: string | null }) {
         </section>
       )}
 
-      <AgentCard job={job} />
     </>
   )
 }
@@ -88,9 +122,11 @@ function AgentCard({ job }: { job: Job }) {
   return (
     <section className="card" aria-labelledby="agent-title">
       <h2 id="agent-title">Muse Spark agent</h2>
-      <dl className="kv">
-        <Row name="Category" value={report.analysis?.category ?? 'n/a'} />
-      </dl>
+      {report.analysis?.category && (
+        <p className="small">
+          Detected: <strong>{report.analysis.category}</strong>
+        </p>
+      )}
       {report.analysis?.plan && <p className="small">{report.analysis.plan}</p>}
       <ol className="small">
         {(report.tool_calls ?? []).map((c, i) => {

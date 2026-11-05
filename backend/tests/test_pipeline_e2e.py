@@ -117,19 +117,19 @@ def test_geometry_caps_views_and_writes_contract(setup, monkeypatch, mode: str) 
     n = len(json.loads((paths.frames / "frames.json").read_text())["frames"])
     (paths.masks / "valid.json").write_text(json.dumps(list(range(n))))
     picked = geometry.pick_views(list(range(n)), geometry.PRESET_VIEWS["draft"])
-    assert len(picked) == 16 and picked[0] == 0 and picked[-1] == n - 1
+    assert len(picked) == 24 and picked[0] == 0 and picked[-1] == n - 1
     engine = FakeEngine(paths.geometry / "views.npz", picked)
     monkeypatch.setattr(geometry, "get_engine", lambda name=None: engine)
     m = run_stage(store, job, paths, "reconstruct", "geometry", {"reconstruct": {"preset": "draft"}})
-    assert m["views"] == 16 and m["engine"] == "fake"
+    assert m["views"] == 24 and m["engine"] == "fake"
     with np.load(paths.geometry / "views.npz") as z:
-        assert z["frame_indices"].tolist() == picked and z["depth"].shape[0] == 16
+        assert z["frame_indices"].tolist() == picked and z["depth"].shape[0] == 24
     cams, meta = load_cameras(paths.geometry / "cameras.json")
     assert [c.index for c in cams] == picked and meta["metric_scale"] is True
     outside = cv2.imread(str(paths.masks / f"{picked[0]:04d}.png"), 0) == 0
     blacked = (engine.images[0][outside] == 0).all(axis=-1).mean()
     assert blacked > 0.9 if mode == "turntable" else blacked < 0.1
-    assert store.get(job.id).metrics["geometry_views"] == 16
+    assert store.get(job.id).metrics["geometry_views"] == 24
 
 
 def test_geometry_needs_eight_views(setup) -> None:

@@ -1,4 +1,4 @@
-import { Bounds, Environment, Lightformer, OrbitControls } from '@react-three/drei'
+import { Bounds, Environment, Grid, Lightformer, OrbitControls } from '@react-three/drei'
 import { Canvas } from '@react-three/fiber'
 import { Component, Suspense, useCallback, useState, type ReactNode } from 'react'
 import { formatCount } from '../../core/format'
@@ -43,20 +43,36 @@ const TOGGLES: { key: keyof DisplayOptions; label: string }[] = [
 export default function ModelViewer({ url }: { url: string }) {
   const [display, setDisplay] = useState<DisplayOptions>({ texture: true, wireframe: false, normals: false })
   const [stats, setStats] = useState<ModelStats | null>(null)
+  const [floor, setFloor] = useState(0)
+  const [spin, setSpin] = useState(false)
   const onStats = useCallback((s: ModelStats) => setStats(s), [])
 
   return (
     <div className="viewer">
       <ViewerErrorBoundary key={url}>
-        <Canvas frameloop="demand" dpr={[1, 2]} camera={{ fov: 40, position: [2, 1.5, 3] }} aria-label="3D model viewer">
-          <color attach="background" args={['#1b1e22']} />
+        <Canvas frameloop={spin ? 'always' : 'demand'} dpr={[1, 2]} camera={{ fov: 40, position: [2, 1.5, 3] }} aria-label="3D model viewer">
+          <color attach="background" args={['#0e1013']} />
+          <fog attach="fog" args={['#0e1013', 8, 22]} />
           <StudioLight />
+          <Grid
+            position={[0, floor - 0.002, 0]}
+            args={[30, 30]}
+            cellSize={0.25}
+            sectionSize={1}
+            cellThickness={0.6}
+            sectionThickness={1}
+            cellColor="#262b33"
+            sectionColor="#3a424d"
+            fadeDistance={9}
+            fadeStrength={1.5}
+            infiniteGrid
+          />
           <Suspense fallback={null}>
             <Bounds fit clip observe margin={1.25}>
-              <Model url={url} display={display} onStats={onStats} />
+              <Model url={url} display={display} onStats={onStats} onFloor={setFloor} />
             </Bounds>
           </Suspense>
-          <OrbitControls makeDefault enableDamping={false} />
+          <OrbitControls makeDefault enableDamping={false} autoRotate={spin} autoRotateSpeed={1.2} />
         </Canvas>
       </ViewerErrorBoundary>
 
@@ -72,6 +88,9 @@ export default function ModelViewer({ url }: { url: string }) {
             {t.label}
           </button>
         ))}
+        <button type="button" className="chip" aria-pressed={spin} onClick={() => setSpin((v) => !v)}>
+          Auto-rotate
+        </button>
       </div>
 
       {stats && (

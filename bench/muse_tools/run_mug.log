@@ -1,0 +1,225 @@
+REVIEW {"geometry": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39], "reference": [24, 36, 37, 38, 39], "excluded_from_carving": [], "cost_usd": 0.002817}
+ #25: shape=good tex=good unique=False role=geometry - oblique top view, sharp well lit
+ #26: shape=good tex=good unique=False role=geometry - close top-oblique view, mask complete
+ #27: shape=good tex=good unique=False role=geometry - close top view, sharp complete
+ #28: shape=good tex=good unique=False role=geometry - top-oblique view, mask complete
+ #29: shape=good tex=good unique=False role=geometry - top-down view, sharp complete
+ #30: shape=good tex=good unique=False role=geometry - top-oblique view, sharp complete
+ #31: shape=good tex=good unique=False role=geometry - top-oblique view, mask complete
+ #32: shape=good tex=good unique=False role=geometry - distant top view, mask complete
+ #33: shape=good tex=good unique=False role=geometry - top-oblique view, sharp complete
+ #34: shape=good tex=good unique=False role=geometry - top-oblique view, sharp complete
+ #35: shape=good tex=good unique=False role=geometry - distant top view, mask complete
+ #36: shape=good tex=ok unique=True role=geometry - high-angle top view into mug interior, mask complete, object small but sharp
+ #37: shape=good tex=ok unique=True role=geometry - top-down view showing inside mug, complete mask, sharp and well lit
+ #38: shape=good tex=ok unique=True role=geometry - top-down view into mug, complete mask, clear details
+ #39: shape=good tex=ok unique=True role=geometry - high-angle top view, complete mask, sharp despite distance
+--- attempt 0 (0.0034 USD): straight-sided cylindrical coffee mug with thin walls, flat base and vertical C-shaped side handle: Use evidence height/base/axis/rim/opening for scale. Body radius from radius_profile upper average to avoid handle bulge, bottom radius from profile base, rim radius from opening. Hollow vessel via revolve with wall ~7% radius and floor from inner_depth. Handle direction from bbox centre offset from axis (negative-X), reach from ray-bbox intersection minus tube radius, C-shaped 7-point sweep in radial-vertical plane from 0.80H to 0.30H. Combine body+handle centred on axis.
+def build(api, evidence):
+    ax = evidence.axis
+    axx = ax[0]
+    axz = ax[1]
+    H = evidence.height
+    base_y = evidence.base_y
+    bbox = evidence.bbox
+    bmin = bbox["min"]
+    bmax = bbox["max"]
+    bmin_x = bmin[0]
+    bmin_z = bmin[2]
+    bmax_x = bmax[0]
+    bmax_z = bmax[2]
+    op = evidence.opening()
+    rim_y = op["rim_y"]
+    rim_r = op["rim_radius"]
+    inner_d = op["inner_depth_estimate"]
+    rp = evidence.radius_profile(12)
+    rsum = 0.0
+    rcnt = 0
+    for i in range(len(rp)):
+        y = rp[i][0]
+        r = rp[i][1]
+        if y > H * 0.32:
+            if y < H * 0.96:
+                rsum = rsum + r
+                rcnt = rcnt + 1
+    r_body = rsum / rcnt
+    r_bot = rp[0][1]
+    r_top = rim_r
+    floor_t = (rim_y - inner_d) - base_y
+    if floor_t < 0.008:
+        floor_t = 0.008
+    if floor_t > H * 0.2:
+        floor_t = H * 0.12
+    wall_t = r_body * 0.07
+    if wall_t < 0.006:
+        wall_t = 0.006
+    if wall_t > 0.014:
+        wall_t = 0.012
+    tube_r = r_body * 0.085
+    if tube_r < 0.008:
+        tube_r = 0.008
+    if tube_r > 0.014:
+        tube_r = 0.014
+    cxx = (bmin_x + bmax_x) * 0.5
+    czz = (bmin_z + bmax_z) * 0.5
+    dx = cxx - axx
+    dz = czz - axz
+    dl = (dx * dx + dz * dz) ** 0.5
+    ux = -1.0
+    uz = 0.0
+    if dl > 0.000001:
+        ux = dx / dl
+        uz = dz / dl
+    tx = 10.0
+    tz = 10.0
+    if abs(ux) > 0.0001:
+        if ux > 0.0:
+            tx = (bmax_x - axx) / ux
+        else:
+            tx = (bmin_x - axx) / ux
+    if abs(uz) > 0.0001:
+        if uz > 0.0:
+            tz = (bmax_z - axz) / uz
+        else:
+            tz = (bmin_z - axz) / uz
+    far = tx
+    if tz < far:
+        far = tz
+    outer_d = far - tube_r - 0.002
+    min_outer = r_body + 0.02
+    if outer_d < min_outer:
+        outer_d = min_outer
+    outer = [(0.0, base_y), (r_bot, base_y), (r_body, base_y + H * 0.12), (r_body, base_y + H * 0.70), (r_top, base_y + H)]
+    body = api.revolve(profile=outer, segments=32, wall=wall_t, floor=floor_t)
+    d0 = r_body * 0.92
+    d1 = r_body + (outer_d - r_body) * 0.65
+    d2 = outer_d
+    y0 = base_y + H * 0.80
+    y1 = base_y + H * 0.80
+    y2 = base_y + H * 0.68
+    y3 = base_y + H * 0.55
+    y4 = base_y + H * 0.42
+    y5 = base_y + H * 0.30
+    y6 = base_y + H * 0.30
+    x0 = axx + ux * d0
+    z0 = axz + uz * d0
+    x1 = axx + ux * d1
+    z1 = axz + uz * d1
+    x2 = axx + ux * d2
+    z2 = axz + uz * d2
+    x3 = axx + ux * d2
+    z3 = axz + uz * d2
+    x4 = axx + ux * d2
+    z4 = axz + uz * d2
+    x5 = axx + ux * d1
+    z5 = axz + uz * d1
+    x6 = axx + ux * d0
+    z6 = axz + uz * d0
+    hpath = [(x0, y0, z0), (x1, y1, z1), (x2, y2, z2), (x3, y3, z3), (x4, y4, z4), (x5, y5, z5), (x6, y6, z6)]
+    handle = api.sweep(path=hpath, radius=tube_r)
+    return api.combine([body, handle])
+
+RESULT {"ok": true, "validation": {"problems": [], "bodies": 2, "triangles": 672, "watertight": true}, "mesh_path": "C:\\Users\\Filip\\Dev\\Projects\\Meshify Capture\\jobs\\cases\\mug_code\\agent\\code_0.ply", "preview_path": "C:\\Users\\Filip\\Dev\\Projects\\Meshify Capture\\jobs\\cases\\mug_code\\agent\\code_0_preview.png"} {"iou_mean": 0.6862, "iou_min": 0.5975}
+--- attempt 1 (0.0023 USD): straight-sided cylindrical coffee mug with thin walls, flat base and vertical C-shaped side handle: Fix under-size and mis-alignment: body radius from 3 non-handle bbox walls, straight side to rim, body translated to evidence.axis, handle direction snapped to max-extent cardinal axis with reach to bbox wall, thinner wall/tube and taller 0.88H-0.20H C-loop to fill green mask.
+def build(api, evidence):
+    ax = evidence.axis
+    axx = ax[0]
+    axz = ax[1]
+    H = evidence.height
+    base_y = evidence.base_y
+    bbox = evidence.bbox
+    bmin = bbox["min"]
+    bmax = bbox["max"]
+    bmin_x = bmin[0]
+    bmin_z = bmin[2]
+    bmax_x = bmax[0]
+    bmax_z = bmax[2]
+    op = evidence.opening()
+    rim_y = op["rim_y"]
+    inner_d = op["inner_depth_estimate"]
+    d_px = bmax_x - axx
+    d_nx = axx - bmin_x
+    d_pz = bmax_z - axz
+    d_nz = axz - bmin_z
+    ux = -1.0
+    uz = 0.0
+    far = d_nx
+    body_r = (d_px + d_pz + d_nz) / 3.0
+    if d_px >= d_nx and d_px >= d_pz and d_px >= d_nz:
+        ux = 1.0
+        uz = 0.0
+        far = d_px
+        body_r = (d_nx + d_pz + d_nz) / 3.0
+    else:
+        if d_pz >= d_nx and d_pz >= d_px and d_pz >= d_nz:
+            ux = 0.0
+            uz = 1.0
+            far = d_pz
+            body_r = (d_px + d_nx + d_nz) / 3.0
+        else:
+            if d_nz >= d_nx and d_nz >= d_px and d_nz >= d_pz:
+                ux = 0.0
+                uz = -1.0
+                far = d_nz
+                body_r = (d_px + d_nx + d_pz) / 3.0
+            else:
+                ux = -1.0
+                uz = 0.0
+                far = d_nx
+                body_r = (d_px + d_pz + d_nz) / 3.0
+    tube_r = body_r * 0.055
+    if tube_r < 0.006:
+        tube_r = 0.006
+    if tube_r > 0.009:
+        tube_r = 0.009
+    wall_t = body_r * 0.045
+    if wall_t < 0.005:
+        wall_t = 0.005
+    if wall_t > 0.008:
+        wall_t = 0.008
+    floor_t = rim_y - inner_d - base_y
+    if floor_t < 0.008:
+        floor_t = 0.008
+    if floor_t > 0.02:
+        floor_t = 0.015
+    outer_d = far - tube_r - 0.001
+    min_out = body_r + 0.025
+    if outer_d < min_out:
+        outer_d = min_out
+    r_low = body_r * 0.9
+    y0 = base_y
+    y1 = base_y + H * 0.08
+    y2 = base_y + H
+    outer = [(0.0, y0), (r_low, y0), (body_r, y1), (body_r, y2)]
+    body0 = api.revolve(profile=outer, segments=48, wall=wall_t, floor=floor_t)
+    body = api.translate(body0, axx, 0.0, axz)
+    d_in = body_r * 0.8
+    d_mid = body_r + (outer_d - body_r) * 0.55
+    d_out = outer_d
+    yta = base_y + H * 0.88
+    ytb = base_y + H * 0.86
+    yto = base_y + H * 0.75
+    ymo = base_y + H * 0.54
+    ybo = base_y + H * 0.32
+    ybb = base_y + H * 0.22
+    yba = base_y + H * 0.2
+    x0 = axx + ux * d_in
+    z0 = axz + uz * d_in
+    x1 = axx + ux * d_mid
+    z1 = axz + uz * d_mid
+    x2 = axx + ux * d_out
+    z2 = axz + uz * d_out
+    x3 = axx + ux * d_out
+    z3 = axz + uz * d_out
+    x4 = axx + ux * d_out
+    z4 = axz + uz * d_out
+    x5 = axx + ux * d_mid
+    z5 = axz + uz * d_mid
+    x6 = axx + ux * d_in
+    z6 = axz + uz * d_in
+    hpath = [(x0, yta, z0), (x1, ytb, z1), (x2, yto, z2), (x3, ymo, z3), (x4, ybo, z4), (x5, ybb, z5), (x6, yba, z6)]
+    handle = api.sweep(path=hpath, radius=tube_r)
+    return api.combine([body, handle])
+
+RESULT {"ok": true, "validation": {"problems": [], "bodies": 2, "triangles": 704, "watertight": true}, "mesh_path": "C:\\Users\\Filip\\Dev\\Projects\\Meshify Capture\\jobs\\cases\\mug_code\\agent\\code_1.ply", "preview_path": "C:\\Users\\Filip\\Dev\\Projects\\Meshify Capture\\jobs\\cases\\mug_code\\agent\\code_1_preview.png"} {"iou_mean": 0.8075, "iou_min": 0.7493}
+SPENT 0.0085

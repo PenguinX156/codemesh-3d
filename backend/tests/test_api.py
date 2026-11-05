@@ -50,9 +50,9 @@ def test_video_job_flow(client: TestClient, tmp_path: Path, monkeypatch: pytest.
     _wait(client)
     job = client.get(f"/api/jobs/{job['id']}").json()
     assert job["status"] == "ready_to_select", job
-    assert job["stages"][0]["name"] == "ingest" and job["stages"][0]["metrics"]["frames"] == 24
+    assert job["stages"][0]["name"] == "ingest" and job["stages"][0]["metrics"]["frames"] == 32
     frames = client.get(f"/api/jobs/{job['id']}/frames").json()
-    assert len(frames) == 24 and frames[0]["url"].endswith("/artifacts/frames/0000.jpg")
+    assert len(frames) == 32 and frames[0]["url"].endswith("/artifacts/frames/0000.jpg")
     img = client.get(frames[0]["url"])
     assert img.status_code == 200 and img.content[:2] == b"\xff\xd8"
     assert client.get(frames[0]["thumb_url"]).status_code == 200

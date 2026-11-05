@@ -2,7 +2,7 @@ import { useGLTF } from '@react-three/drei'
 import { useThree } from '@react-three/fiber'
 import { useEffect, useMemo } from 'react'
 import { meshesOf, measure, type ModelStats } from './measure'
-import { MeshBasicMaterial, MeshNormalMaterial, MeshStandardMaterial, type Material, type Mesh } from 'three'
+import { Box3, MeshBasicMaterial, MeshNormalMaterial, MeshStandardMaterial, type Material, type Mesh } from 'three'
 
 export interface DisplayOptions {
   texture: boolean
@@ -16,13 +16,14 @@ const setMaterial = (mesh: Mesh, material: Mesh['material']) => {
 }
 
 /** A glTF scene whose materials follow the display toggles. Original materials are restored on toggle-off. */
-export function Model({ url, display, onStats }: { url: string; display: DisplayOptions; onStats: (s: ModelStats) => void }) {
+export function Model({ url, display, onStats, onFloor }: { url: string; display: DisplayOptions; onStats: (s: ModelStats) => void; onFloor?: (y: number) => void }) {
   const { scene } = useGLTF(url)
   const invalidate = useThree((s) => s.invalidate)
   const root = useMemo(() => scene.clone(true), [scene])
   const originals = useMemo(() => new Map(meshesOf(root).map((m) => [m, m.material] as const)), [root])
 
   useEffect(() => onStats(measure(root)), [root, onStats])
+  useEffect(() => onFloor?.(new Box3().setFromObject(root).min.y), [root, onFloor])
 
   useEffect(() => {
     const made: Material[] = []

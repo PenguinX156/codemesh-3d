@@ -1,0 +1,44 @@
+REVIEW {"geometry": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39], "reference": [24, 36, 37, 38, 39], "excluded_from_carving": [], "cost_usd": 0.002817}
+ #25: shape=good tex=good unique=False role=geometry - oblique top view, sharp well lit
+ #26: shape=good tex=good unique=False role=geometry - close top-oblique view, mask complete
+ #27: shape=good tex=good unique=False role=geometry - close top view, sharp complete
+ #28: shape=good tex=good unique=False role=geometry - top-oblique view, mask complete
+ #29: shape=good tex=good unique=False role=geometry - top-down view, sharp complete
+ #30: shape=good tex=good unique=False role=geometry - top-oblique view, sharp complete
+ #31: shape=good tex=good unique=False role=geometry - top-oblique view, mask complete
+ #32: shape=good tex=good unique=False role=geometry - distant top view, mask complete
+ #33: shape=good tex=good unique=False role=geometry - top-oblique view, sharp complete
+ #34: shape=good tex=good unique=False role=geometry - top-oblique view, sharp complete
+ #35: shape=good tex=good unique=False role=geometry - distant top view, mask complete
+ #36: shape=good tex=ok unique=True role=geometry - high-angle top view into mug interior, mask complete, object small but sharp
+ #37: shape=good tex=ok unique=True role=geometry - top-down view showing inside mug, complete mask, sharp and well lit
+ #38: shape=good tex=ok unique=True role=geometry - top-down view into mug, complete mask, clear details
+ #39: shape=good tex=ok unique=True role=geometry - high-angle top view, complete mask, sharp despite distance
+Traceback (most recent call last):
+  File "C:\Users\Filip\Dev\Projects\Meshify Capture\bench\muse_tools\run_mug.py", line 46, in <module>
+    evidence["residual_outside_central_cylinder_sample"] = ev.residual(
+                                                           ^^^^^^^^^^^^
+  File "C:\Users\Filip\Dev\Projects\Meshify Capture\backend\codemesh\agent\meshapi.py", line 223, in residual
+    d = trimesh.proximity.signed_distance(body, self.points[::10])  # positive inside
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Filip\Dev\Projects\Meshify Capture\backend\.venv\Lib\site-packages\trimesh\proximity.py", line 251, in signed_distance
+    closest, distance, triangle_id = closest_point(mesh, points)
+                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Filip\Dev\Projects\Meshify Capture\backend\.venv\Lib\site-packages\trimesh\proximity.py", line 156, in closest_point
+    candidates = nearby_faces(mesh, points)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Filip\Dev\Projects\Meshify Capture\backend\.venv\Lib\site-packages\trimesh\proximity.py", line 59, in nearby_faces
+    rtree = mesh.triangles_tree
+            ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Filip\Dev\Projects\Meshify Capture\backend\.venv\Lib\site-packages\trimesh\caching.py", line 133, in get_cached
+    value = function(*args, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Filip\Dev\Projects\Meshify Capture\backend\.venv\Lib\site-packages\trimesh\base.py", line 907, in triangles_tree
+    return triangles.bounds_tree(self.triangles)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Filip\Dev\Projects\Meshify Capture\backend\.venv\Lib\site-packages\trimesh\triangles.py", line 392, in bounds_tree
+    tree = util.bounds_tree(triangle_bounds)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Filip\Dev\Projects\Meshify Capture\backend\.venv\Lib\site-packages\trimesh\util.py", line 1896, in bounds_tree
+    import rtree
+ModuleNotFoundError: No module named 'rtree'

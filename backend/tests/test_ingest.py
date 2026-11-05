@@ -112,10 +112,10 @@ def test_run_writes_frames_json_and_uses_cache(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path / "job")
     make_video(ctx.paths.input / "000_v.mp4", n=48, sharp_every=None)
     first = ingest.run(ctx)
-    assert first["frames"] == 24 and "cached" not in first
+    assert first["frames"] == 32 and "cached" not in first
     frames = json.loads((ctx.paths.frames / "frames.json").read_text())
-    assert len(frames["frames"]) == 24 and ctx.artifacts["frames_json"] == "frames/frames.json"
+    assert len(frames["frames"]) == 32 and ctx.artifacts["frames_json"] == "frames/frames.json"
     second = ingest.run(ctx)
     assert second == {**first, "cached": True}
     ctx.settings["preset"] = "standard"  # different K -> cache miss, recomputed
-    assert ingest.run(ctx)["frames"] == 40
+    assert ingest.run(ctx)["frames"] == 48

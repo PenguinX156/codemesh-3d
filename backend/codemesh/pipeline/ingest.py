@@ -37,7 +37,7 @@ try:  # optional HEIC/HEIF support
 except ImportError:
     HEIF_SUPPORTED = False
 
-PRESET_FRAMES = {"draft": 24, "standard": 40, "high": 64}
+PRESET_FRAMES = {"draft": 32, "standard": 48, "high": 64}
 VIDEO_EXTS = frozenset({".mp4", ".mov", ".webm", ".mkv"})
 IMAGE_EXTS = frozenset({".jpg", ".jpeg", ".png", ".webp"} | ({".heic", ".heif"} if HEIF_SUPPORTED else set()))
 

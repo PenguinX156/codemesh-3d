@@ -1,0 +1,81 @@
+{
+ "result": {
+  "ok": true,
+  "validation": {
+   "problems": [],
+   "bodies": 2,
+   "triangles": 704,
+   "watertight": true
+  },
+  "mesh_path": "C:\\Users\\Filip\\Dev\\Projects\\Meshify Capture\\jobs\\cases\\mug_code\\agent\\code_1.ply",
+  "metrics": {
+   "iou_mean": 0.8075,
+   "iou_min": 0.7493,
+   "views": [
+    {
+     "index": 0,
+     "iou": 0.8082,
+     "boundary_f": 0.6177
+    },
+    {
+     "index": 2,
+     "iou": 0.8468,
+     "boundary_f": 0.8131
+    },
+    {
+     "index": 3,
+     "iou": 0.8345,
+     "boundary_f": 0.7479
+    },
+    {
+     "index": 5,
+     "iou": 0.7993,
+     "boundary_f": 0.3321
+    },
+    {
+     "index": 8,
+     "iou": 0.7986,
+     "boundary_f": 0.3966
+    },
+    {
+     "index": 10,
+     "iou": 0.7493,
+     "boundary_f": 0.3848
+    },
+    {
+     "index": 12,
+     "iou": 0.7567,
+     "boundary_f": 0.5066
+    },
+    {
+     "index": 14,
+     "iou": 0.8562,
+     "boundary_f": 0.8216
+    },
+    {
+     "index": 17,
+     "iou": 0.8108,
+     "boundary_f": 0.5
+    },
+    {
+     "index": 19,
+     "iou": 0.8053,
+     "boundary_f": 0.5468
+    },
+    {
+     "index": 20,
+     "iou": 0.8503,
+     "boundary_f": 0.7754
+    },
+    {
+     "index": 24,
+     "iou": 0.7742,
+     "boundary_f": 0.5795
+    }
+   ]
+  },
+  "preview_path": "C:\\Users\\Filip\\Dev\\Projects\\Meshify Capture\\jobs\\cases\\mug_code\\agent\\code_1_preview.png"
+ },
+ "code": "def build(api, evidence):\n    ax = evidence.axis\n    axx = ax[0]\n    axz = ax[1]\n    H = evidence.height\n    base_y = evidence.base_y\n    bbox = evidence.bbox\n    bmin = bbox[\"min\"]\n    bmax = bbox[\"max\"]\n    bmin_x = bmin[0]\n    bmin_z = bmin[2]\n    bmax_x = bmax[0]\n    bmax_z = bmax[2]\n    op = evidence.opening()\n    rim_y = op[\"rim_y\"]\n    inner_d = op[\"inner_depth_estimate\"]\n    d_px = bmax_x - axx\n    d_nx = axx - bmin_x\n    d_pz = bmax_z - axz\n    d_nz = axz - bmin_z\n    ux = -1.0\n    uz = 0.0\n    far = d_nx\n    body_r = (d_px + d_pz + d_nz) / 3.0\n    if d_px >= d_nx and d_px >= d_pz and d_px >= d_nz:\n        ux = 1.0\n        uz = 0.0\n        far = d_px\n        body_r = (d_nx + d_pz + d_nz) / 3.0\n    else:\n        if d_pz >= d_nx and d_pz >= d_px and d_pz >= d_nz:\n            ux = 0.0\n            uz = 1.0\n            far = d_pz\n            body_r = (d_px + d_nx + d_nz) / 3.0\n        else:\n            if d_nz >= d_nx and d_nz >= d_px and d_nz >= d_pz:\n                ux = 0.0\n                uz = -1.0\n                far = d_nz\n                body_r = (d_px + d_nx + d_pz) / 3.0\n            else:\n                ux = -1.0\n                uz = 0.0\n                far = d_nx\n                body_r = (d_px + d_pz + d_nz) / 3.0\n    tube_r = body_r * 0.055\n    if tube_r < 0.006:\n        tube_r = 0.006\n    if tube_r > 0.009:\n        tube_r = 0.009\n    wall_t = body_r * 0.045\n    if wall_t < 0.005:\n        wall_t = 0.005\n    if wall_t > 0.008:\n        wall_t = 0.008\n    floor_t = rim_y - inner_d - base_y\n    if floor_t < 0.008:\n        floor_t = 0.008\n    if floor_t > 0.02:\n        floor_t = 0.015\n    outer_d = far - tube_r - 0.001\n    min_out = body_r + 0.025\n    if outer_d < min_out:\n        outer_d = min_out\n    r_low = body_r * 0.9\n    y0 = base_y\n    y1 = base_y + H * 0.08\n    y2 = base_y + H\n    outer = [(0.0, y0), (r_low, y0), (body_r, y1), (body_r, y2)]\n    body0 = api.revolve(profile=outer, segments=48, wall=wall_t, floor=floor_t)\n    body = api.translate(body0, axx, 0.0, axz)\n    d_in = body_r * 0.8\n    d_mid = body_r + (outer_d - body_r) * 0.55\n    d_out = outer_d\n    yta = base_y + H * 0.88\n    ytb = base_y + H * 0.86\n    yto = base_y + H * 0.75\n    ymo = base_y + H * 0.54\n    ybo = base_y + H * 0.32\n    ybb = base_y + H * 0.22\n    yba = base_y + H * 0.2\n    x0 = axx + ux * d_in\n    z0 = axz + uz * d_in\n    x1 = axx + ux * d_mid\n    z1 = axz + uz * d_mid\n    x2 = axx + ux * d_out\n    z2 = axz + uz * d_out\n    x3 = axx + ux * d_out\n    z3 = axz + uz * d_out\n    x4 = axx + ux * d_out\n    z4 = axz + uz * d_out\n    x5 = axx + ux * d_mid\n    z5 = axz + uz * d_mid\n    x6 = axx + ux * d_in\n    z6 = axz + uz * d_in\n    hpath = [(x0, yta, z0), (x1, ytb, z1), (x2, yto, z2), (x3, ymo, z3), (x4, ybo, z4), (x5, ybb, z5), (x6, yba, z6)]\n    handle = api.sweep(path=hpath, radius=tube_r)\n    return api.combine([body, handle])\n",
+ "spent_usd": 0.0085012
+}

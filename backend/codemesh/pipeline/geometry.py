@@ -25,8 +25,8 @@ from codemesh.jobs.context import StageContext
 from codemesh.pipeline.cameras import cameras_from_geometry, save_cameras
 from codemesh.pipeline.segment import MIN_VIEWS
 
-PRESET_VIEWS = {"draft": 16, "standard": 24, "high": 32}
-FIXED_COUNTS = (8, 16, 24, 32)  # the only view counts ever sent to an engine
+PRESET_VIEWS = {"draft": 24, "standard": 32, "high": 48}  # more views keep thin parts and unique angles
+FIXED_COUNTS = (8, 16, 24, 32, 40, 48)  # the only view counts ever sent to an engine (ROCm compiles per count)
 TURNTABLE_DILATE = 0.01  # of the long image side: keep a margin of background around the object
 
 
