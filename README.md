@@ -6,6 +6,17 @@ Upload a walk-around video (or a set of photos), type what the object is, and Co
 
 Built for the Meta Global AI Developer Hackathon (Cerebral Valley, Nov 2026).
 
+## Try it live (no install)
+
+**https://fjziemski--codemesh-web.us-east.modal.run**
+
+1. Open the link in any desktop or phone browser. The first visit after it has been idle takes a few seconds to wake up ("Connecting to the backend…").
+2. Drop in a short walk-around video of an object (or 2-300 photos), tick the data-use notice, and press **Upload and start**.
+3. Type what the object is (for example "electric kettle"), press **Find object**, check the masks, then **Build 3D model**.
+4. In a few minutes you get the 3D viewer, the accuracy score, the quality grade and Muse's modeling decisions. **Download GLB** to open it in Blender, Unity or Unreal.
+
+Tips: walk one slow circle (30-45 s) with the whole object in frame, then add a short look from above. Don't upload people, faces or private spaces: inputs go to Meta's Muse Spark Contributor tier. Finished jobs are listed under Recent jobs on the home page.
+
 ## How it works
 
 | Step | What happens | Tech |
