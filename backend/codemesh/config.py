@@ -14,6 +14,8 @@ META_API_KEY = os.getenv("META_API_KEY", "")
 META_API_BASE = os.getenv("META_API_BASE", "https://api.meta.ai/v1")
 MUSE_MODEL = os.getenv("MUSE_MODEL", "muse-spark-1.3-contributor")
 MUSE_REASONING = os.getenv("MUSE_REASONING", "high")
+MUSE_IMAGE_MAX_SIDE = int(os.getenv("MUSE_IMAGE_MAX_SIDE", "2048"))  # high res: Muse judges shape detail from these
+MUSE_TOKEN_BUDGET = int(os.getenv("MUSE_TOKEN_BUDGET", "2500000"))  # per job; Contributor ~$0.10-0.20 per 1M
 SAM_MODEL = os.getenv("SAM_MODEL", "sam-3.1")
 
 JOBS_DIR = Path(os.getenv("CODEMESH_JOBS_DIR", REPO_ROOT / "jobs"))

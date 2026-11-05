@@ -17,7 +17,7 @@ import modal
 ROOT = Path(__file__).resolve().parents[1]
 MA_DIR = ROOT / "third_party" / "map-anything"
 DIST = ROOT / "frontend" / "dist"
-GPU = "L4"
+GPU = ["L4", "A10G", "T4"]  # fallbacks: L4 capacity runs out; any of these fits MapAnything (bf16 on L4/A10G, fp16 on T4)
 MAX_UPLOAD_BYTES = 600 * 1024**2
 
 app = modal.App("codemesh")

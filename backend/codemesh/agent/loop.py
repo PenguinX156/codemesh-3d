@@ -27,6 +27,9 @@ from . import ops, tools
 log = logging.getLogger(__name__)
 
 MAX_ROUNDS = 2
+# Keep rule: best silhouette IoU, but a clean primitive wins while within this margin of the best
+# (clean topology matters more for game/Blender use than the last few IoU points).
+PRIMITIVE_MARGIN = 0.03
 MAX_CALLS = 4
 VERSIONED = ("mesh", "texture", "export", "evaluate")  # dirs snapshotted per round
 chat = muse.chat  # tests monkeypatch this
@@ -37,7 +40,7 @@ estimated cameras + depth, and conventional code fused and meshed it. You see re
 object, its mask cutout, and evaluation renders of the current mesh against the masks (compare images) \
 with metrics (silhouette IoU, boundary F, chamfer % of bbox diagonal).
 Decide how the object should be modeled and call tools to fix it. Use what you know about the object \
-category (e.g. a mug is a surface of revolution with a handle; a box is mirror-symmetric).
+category. Prefer a CLEAN modeled base mesh over the noisy reconstruction whenever the object is a simple hard-surface shape: a mug/cup = build_lathe(hollow=true) + add_handle; a bottle/vase/kettle body = build_lathe; a cabinet/box/book = build_rounded_box. Organic or irregular objects (plants, food, plush toys) keep the reconstruction (use_reconstruction). Shiny/metal objects: set_material with high metallic, low roughness.
 In your text answer return ONLY a JSON object: {"category": str, "hard_surface_or_organic": \
 "hard_surface"|"organic", "symmetry": str, "thin_parts": [str], "materials": [str], "issues_seen": [str], \
 "plan": str}, and in the same reply call the tools that execute the plan. In later rounds answer with one sentence of text plus tool calls. Call accept() when done."""
@@ -113,7 +116,7 @@ def parse_json(text: str) -> dict[str, Any]:
 
 def rerun(job_dir: Path, base: dict[str, Any], plan: tools.Plan, first: str, progress) -> None:
     """Re-run `first` and every later stage with the plan applied (symmetry right after mesh)."""
-    from codemesh.pipeline import evaluate, export, mesh, texture
+    from codemesh.pipeline import evaluate, export, mesh, primitives, texture
 
     fns = {"mesh": mesh.run, "texture": texture.run, "export": export.run, "evaluate": evaluate.run}
     settings = {**base, **plan.settings()}
@@ -123,13 +126,19 @@ def rerun(job_dir: Path, base: dict[str, Any], plan: tools.Plan, first: str, pro
         if name == "mesh" and plan.symmetry != "none":
             budget = plan.triangle_budget or (base.get("triangle_budget") if base.get("triangle_budget") != "auto" else None)
             ops.apply_symmetry(job_dir, plan.symmetry, budget)
+        if name == "mesh" and plan.primitive:  # low = clean primitive, high = reconstruction (normal-map detail)
+            fit = primitives.build(job_dir, **plan.primitive)
+            (job_dir / "mesh" / "primitive.json").write_text(json.dumps(fit, indent=1))
+            mp = job_dir / "mesh" / "metrics.json"
+            if mp.exists():
+                mp.write_text(json.dumps({**json.loads(mp.read_text()), "tris_low": fit["triangles"], "primitive": fit}, indent=1))
 
 
 def _ask(messages: list[dict], images: list, usage: list[muse.Usage]) -> muse.MuseReply:
     if len(usage) >= MAX_CALLS:
         raise RuntimeError("Muse call budget exhausted")
     reply = chat(messages, images=images, tools=tools.TOOLS, reasoning=config.MUSE_REASONING,
-                 max_tokens=8000, max_side=1024)
+                 max_tokens=8000, max_side=config.MUSE_IMAGE_MAX_SIDE)
     usage.append(reply.usage)
     return reply
 
@@ -150,6 +159,7 @@ def run(ctx: StageContext) -> dict[str, Any]:
     _snapshot(root, 0)
     report["rounds"].append({"round": 0, "metrics": _summary(root), "plan": None})
     best, best_iou = 0, _iou(root)
+    best_score = best_iou  # IoU + PRIMITIVE_MARGIN for primitive rounds
     error = None
     try:
         ctx.progress(0.05, "agent: Muse is analysing the capture")
@@ -190,10 +200,12 @@ def run(ctx: StageContext) -> dict[str, Any]:
                 _restore(root, best)
             iou = metrics.get("iou_mean")
             _snapshot(root, rnd)
-            report["rounds"].append({"round": rnd, "metrics": metrics, "plan": {**plan.settings(), "symmetry": plan.symmetry}})
-            improved = iou is not None and iou > best_iou
+            report["rounds"].append({"round": rnd, "metrics": metrics, "plan": {**plan.settings(), "symmetry": plan.symmetry,
+                                                                            "primitive": dict(plan.primitive or {}) or None}})
+            score = None if iou is None else iou + (PRIMITIVE_MARGIN if plan.primitive else 0.0)
+            improved = score is not None and score > best_score
             if improved:
-                best, best_iou = rnd, iou
+                best, best_iou, best_score = rnd, iou, score
             if accepted or not improved or rnd == MAX_ROUNDS:
                 break
             messages += [reply.message, *results, {"role": "user", "content":
@@ -208,6 +220,7 @@ def run(ctx: StageContext) -> dict[str, Any]:
     _restore(root, best)
     total = sum(usage, muse.Usage())
     report.update(best_round=best, best_iou=best_iou, error=error,
+                  keep_rule=f"best silhouette IoU; a clean primitive is preferred within {PRIMITIVE_MARGIN} IoU of the best",
                   usage=[u.__dict__ for u in usage], cost_usd=round(total.cost_usd, 5),
                   tokens={"prompt": total.prompt_tokens, "completion": total.completion_tokens,
                           "reasoning": total.reasoning_tokens})

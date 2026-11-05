@@ -72,7 +72,7 @@ class MuseReply:
     # `messages` (with tool results) to continue a tool loop
 
 
-def image_part(image: ImageInput, max_side: int = 1280) -> dict[str, Any]:
+def image_part(image: ImageInput, max_side: int = config.MUSE_IMAGE_MAX_SIDE) -> dict[str, Any]:
     """Chat Completions image content part from a path or RGB uint8 array (JPEG q90, <= max_side)."""
     pil = Image.fromarray(image) if isinstance(image, np.ndarray) else Image.open(image)
     pil = ImageOps.exif_transpose(pil).convert("RGB")
@@ -91,7 +91,7 @@ def chat(
     response_schema: dict[str, Any] | None = None,
     reasoning: str = config.MUSE_REASONING,
     max_tokens: int | None = 8000,
-    max_side: int = 1280,
+    max_side: int = config.MUSE_IMAGE_MAX_SIDE,
     client: MetaClient | None = None,
 ) -> MuseReply:
     """Call Muse Spark.

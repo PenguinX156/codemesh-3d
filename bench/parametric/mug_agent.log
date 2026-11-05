@@ -1,0 +1,20 @@
+[0.05] agent: Muse is analysing the capture
+[0.20] agent round 1: re-running from mesh
+[0.50] agent: re-running mesh
+[0.50] agent: re-running texture
+[0.50] agent: re-running export
+[0.50] agent: re-running evaluate
+[0.55] agent round 2: re-running from mesh
+[0.50] agent: re-running mesh
+[0.50] agent: re-running texture
+[0.50] agent: re-running export
+[0.50] agent: re-running evaluate
+[1.00] agent: kept round 2 (IoU 0.809)
+{
+ "agent_rounds": 2,
+ "agent_cost_usd": 0.00214,
+ "agent_category": null,
+ "agent_best_round": 2,
+ "agent_iou_before": 0.8159232274228118,
+ "agent_iou_after": 0.809185815929214
+}

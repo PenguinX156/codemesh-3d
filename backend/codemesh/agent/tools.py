@@ -26,9 +26,10 @@ class Plan:
     roughness: float | None = None
     metallic: float | None = None
     texture_size: int | None = None
+    primitive: dict[str, Any] | None = None  # kwargs of pipeline.primitives.build; None = reconstructed mesh
 
     def settings(self) -> dict[str, Any]:
-        return {k: v for k, v in asdict(self).items() if v is not None and k != "symmetry"}
+        return {k: v for k, v in asdict(self).items() if v is not None and k not in ("symmetry", "primitive")}
 
 
 def _fn(name: str, description: str, properties: dict[str, Any]) -> dict[str, Any]:
@@ -43,6 +44,17 @@ TOOLS = [
     _fn("set_mesh_method", "Surface reconstruction: 'hull_depth' (visual hull from the masks refined by depth; "
         "robust when depth on the object is sparse) or 'poisson' (fused depth points only).",
         {"method": {"type": "string", "enum": list(MESH_METHODS)}}),
+    _fn("build_lathe", "Replace the game mesh with a CLEAN surface of revolution fitted to the measured hull "
+        "(radius profile per height). For round hard-surface objects: mugs, cups, bottles, vases, kettle bodies. "
+        "hollow=true opens the top with a wall (cups, bowls). The reconstructed mesh stays as the normal-map source.",
+        {"hollow": {"type": "boolean"}, "segments": {"type": "integer", "enum": [32, 48, 64, 96]}}),
+    _fn("build_rounded_box", "Replace the game mesh with a CLEAN oriented box with rounded edges fitted to the hull "
+        "(cabinets, books, boxes, appliances). bevel = edge radius as a fraction of the smallest side.",
+        {"bevel": {"type": "number", "minimum": 0, "maximum": 0.3}}),
+    _fn("add_handle", "After build_lathe: fit a swept tube to the hull parts outside the lathe body (mug/kettle "
+        "handle). Skipped automatically when there is no such residual.", {}),
+    _fn("use_reconstruction", "Go back to the reconstructed surface (organic or irregular objects: plants, food, "
+        "toys, clothing). method as in set_mesh_method.", {"method": {"type": "string", "enum": list(MESH_METHODS)}}),
     _fn("set_triangle_budget", "Triangle count of the game-ready low mesh.",
         {"tris": {"type": "integer", "minimum": 1000, "maximum": 150000}}),
     _fn("apply_symmetry", "Post-mesh symmetry in the gravity-aligned frame (+Y up). 'rotational_y' rebuilds the "
@@ -80,6 +92,31 @@ def apply(plan: Plan, name: str, args: dict[str, Any]) -> tuple[str, str | None]
             return "not supported in this build (hull_depth meshing not available); keeping poisson", None
         plan.mesh_method = method
         return f"mesh method = {method}", "mesh"
+    if name == "build_lathe":
+        segments = int(args.get("segments", 64))
+        if segments not in (32, 48, 64, 96):
+            raise ValueError("segments must be 32, 48, 64 or 96")
+        plan.primitive = {"kind": "lathe", "hollow": bool(args.get("hollow", False)), "segments": segments,
+                          "with_handle": bool((plan.primitive or {}).get("with_handle"))}
+        plan.symmetry = "none"
+        return f"primitive = lathe (hollow={plan.primitive['hollow']}, {segments} segments)", "mesh"
+    if name == "build_rounded_box":
+        bevel = float(args.get("bevel", 0.08))
+        if not 0 <= bevel <= 0.3:
+            raise ValueError("bevel must be in 0..0.3")
+        plan.primitive, plan.symmetry = {"kind": "rounded_box", "bevel": bevel}, "none"
+        return f"primitive = rounded box (bevel {bevel})", "mesh"
+    if name == "add_handle":
+        if (plan.primitive or {}).get("kind") != "lathe":
+            raise ValueError("add_handle needs build_lathe first")
+        plan.primitive["with_handle"] = True
+        return "handle added to the lathe", "mesh"
+    if name == "use_reconstruction":
+        method = args.get("method")
+        if method not in MESH_METHODS:
+            raise ValueError(f"method must be one of {MESH_METHODS}")
+        plan.primitive, plan.mesh_method = None, method
+        return f"reconstructed mesh ({method})", "mesh"
     if name == "set_triangle_budget":
         tris = int(args.get("tris", 0))
         if not 1000 <= tris <= 150000:
