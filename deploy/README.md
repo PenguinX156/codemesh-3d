@@ -78,6 +78,32 @@ uv run --project backend --with modal python -c "import modal,time; w=modal.Cls.
 - Idle: $0 (both scale to zero). Volumes: storage only, a few GB.
 - Estimates, not measured; set a workspace spending limit in the Modal dashboard.
 
+## Checking that it scales to zero
+
+The web container stays up while requests keep arriving, then stops 600 s after the last one (`scaledown_window`); the GPU worker stops 120 s after its last call. `min_containers=0`, so nothing runs when nobody uses the app. Until Nov 7 2026 the page re-checked `/api/health` every 10 s forever, so any open tab kept the 8-CPU container up around the clock (~$12/day). Now an open page only makes requests while a job is being processed and its tab is visible: it stops once the job is done, failed or waiting for the user, and hidden tabs make no requests.
+
+1. **Page behaviour** (no real job is started; about 1.5 min):
+   ```bash
+   node bench/ui/visibility_check.mjs
+   ```
+   All three lines must say PASS (running job + hidden tab, waiting job, finished job).
+2. **Nothing running when idle:** leave the app alone for 11 minutes (close or reload any tab opened before the fix: old tabs keep the old code), then
+   ```bash
+   modal container list
+   ```
+   prints an empty table (or `[]` with `--json`). The dashboard shows the same under Apps → codemesh → Containers.
+3. **Who kept it awake** (if a container is still up):
+   ```bash
+   modal app logs codemesh --timestamps --since 2026-11-08T00:00:00Z
+   ```
+   A steady stream of `GET /api/health` lines means an old tab is polling; `GET /api/jobs/<id>` every second means a job is running.
+4. **Cost per hour:**
+   ```bash
+   modal billing report --for today --resolution h --show-resources
+   ```
+   Idle hours show no CPU or memory cost for `codemesh`.
+5. **Hard stop** when the app is no longer needed: `modal app stop codemesh` (the URL stops working; `modal deploy deploy/modal_app.py` brings it back). Also set a workspace spending limit under Modal Settings → Usage & Billing.
+
 ## Limits
 
 - One web container (`max_containers=1`): SQLite and the in-process runner thread are not shared across containers. Jobs run one at a time, FIFO. To scale out, move the job store to a shared DB and the runner to separate Modal functions.

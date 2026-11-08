@@ -101,7 +101,6 @@ export interface Capabilities {
 }
 
 /** Statuses after which the job will not change without a user action. */
-export const TERMINAL_STATUSES: readonly JobStatus[] = ['done', 'failed']
 
 /** Statuses where the backend is working and the UI should show progress. */
 export const BUSY_STATUSES: readonly JobStatus[] = ['created', 'segmenting', 'reconstructing', 'refining']

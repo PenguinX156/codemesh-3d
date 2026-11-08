@@ -48,6 +48,21 @@ test('pollJob recovers from errors and stops on a terminal status', async () => 
   assert.equal(calls, 3)
 })
 
+test('pollJob stops while the job waits for the user', async () => {
+  const seq = ['created', 'ready_to_select', 'never']
+  let calls = 0
+  const fake = (async () => new Response(JSON.stringify(job(seq[calls++] as Job['status'])))) as typeof fetch
+  await new Promise<void>((resolve) => {
+    pollJob(createApi('/api', fake), 'j1', {
+      intervalMs: 5,
+      onUpdate: (j) => {
+        if (j.status === 'ready_to_select') setTimeout(resolve, 40)
+      },
+    })
+  })
+  assert.equal(calls, 2)
+})
+
 test('parseTriangleBudget clamps and falls back to auto', () => {
   assert.equal(parseTriangleBudget(''), 'auto')
   assert.equal(parseTriangleBudget('10'), 500)

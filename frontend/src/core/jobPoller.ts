@@ -1,5 +1,5 @@
 import type { Api } from './api.ts'
-import { TERMINAL_STATUSES, type Job } from './types.ts'
+import { BUSY_STATUSES, type Job } from './types.ts'
 
 export interface PollOptions {
   /** Delay between successful polls. */
@@ -11,7 +11,9 @@ export interface PollOptions {
 }
 
 /**
- * Poll GET /jobs/{id} until the job is done or failed. Errors back off (x1.6, capped) and
+ * Poll GET /jobs/{id} while the backend is working on it. Stops when the job is done, failed or waiting
+ * for the user (select, mask review): an idle page must not keep the hosted server awake. Every user
+ * action restarts polling (useJob's reload). Errors back off (x1.6, capped) and
  * never stop the poller: a restarting backend should not strand the UI.
  * Returns `stop()`. Uses only setTimeout, so it works in React Native too.
  */
@@ -28,7 +30,7 @@ export function pollJob(api: Api, jobId: string, opts: PollOptions): () => void 
       if (stopped) return
       delay = interval
       opts.onUpdate(job)
-      if (TERMINAL_STATUSES.includes(job.status)) return
+      if (!BUSY_STATUSES.includes(job.status)) return
     } catch (e) {
       if (stopped) return
       delay = Math.min(maxBackoff, Math.round(delay * 1.6))
