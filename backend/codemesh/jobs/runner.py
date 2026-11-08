@@ -49,6 +49,11 @@ class Runner:
         with self._busy_lock:
             return job_id in self._busy
 
+    def active(self) -> bool:
+        """True while any job is queued or running."""
+        with self._busy_lock:
+            return bool(self._busy)
+
     def submit(self, job_id: str, action: str, settings: dict | None = None) -> None:
         """Queue `action` for the job, first merging `settings` into Job.settings.
 

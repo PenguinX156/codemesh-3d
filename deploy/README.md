@@ -82,6 +82,8 @@ uv run --project backend --with modal python -c "import modal,time; w=modal.Cls.
 
 The web container stays up while requests keep arriving, then stops 600 s after the last one (`scaledown_window`); the GPU worker stops 120 s after its last call. `min_containers=0`, so nothing runs when nobody uses the app. Until Nov 7 2026 the page re-checked `/api/health` every 10 s forever, so any open tab kept the 8-CPU container up around the clock (~$12/day). Now an open page only makes requests while a job is being processed and its tab is visible: it stops once the job is done, failed or waiting for the user, and hidden tabs make no requests.
 
+A job keeps running when the user closes the tab: Modal counts only incoming requests as activity (the job runner thread is not one), so while a job is queued or running the web container requests its own `/api/health` once a minute (`keep_alive_while_busy` in `deploy/modal_app.py`). The pings stop when no job is running, and after 30 minutes of job time (`KEEPALIVE_MAX_MINUTES`), so a stuck job costs at most ~40 minutes before the container stops; it is marked failed on the next start.
+
 1. **Page behaviour** (no real job is started; about 1.5 min):
    ```bash
    node bench/ui/visibility_check.mjs
@@ -97,12 +99,17 @@ The web container stays up while requests keep arriving, then stops 600 s after 
    modal app logs codemesh --timestamps --since 2026-11-08T00:00:00Z
    ```
    A steady stream of `GET /api/health` lines means an old tab is polling; `GET /api/jobs/<id>` every second means a job is running.
-4. **Cost per hour:**
+4. **A job survives a closed tab** (one real job: about $0.01 Meta API plus Modal time):
+   ```bash
+   uv run --project backend python bench/ui/closed_tab_job.py <video> "<object name>"
+   ```
+   It uploads, selects the object, starts the build and disconnects. Wait about 15 minutes without opening the app, check that `modal app logs codemesh --timestamps` shows one `GET /api/health` per minute while the job ran and none after, that `modal container list` is empty, then run `... closed_tab_job.py --status <job_id>`: it must print `done`.
+5. **Cost per hour:**
    ```bash
    modal billing report --for today --resolution h --show-resources
    ```
    Idle hours show no CPU or memory cost for `codemesh`.
-5. **Hard stop** when the app is no longer needed: `modal app stop codemesh` (the URL stops working; `modal deploy deploy/modal_app.py` brings it back). Also set a workspace spending limit under Modal Settings → Usage & Billing.
+6. **Hard stop** when the app is no longer needed: `modal app stop codemesh` (the URL stops working; `modal deploy deploy/modal_app.py` brings it back). Also set a workspace spending limit under Modal Settings → Usage & Billing.
 
 ## Limits
 

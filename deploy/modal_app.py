@@ -19,6 +19,8 @@ MA_DIR = ROOT / "third_party" / "map-anything"
 DIST = ROOT / "frontend" / "dist"
 GPU = ["L4", "A10G", "T4"]  # fallbacks: L4 capacity runs out; any of these fits MapAnything (bf16 on L4/A10G, fp16 on T4)
 MAX_UPLOAD_BYTES = 600 * 1024**2
+KEEPALIVE_SECONDS = 60  # well under scaledown_window (600 s)
+KEEPALIVE_MAX_MINUTES = 30  # job cap: a standard job takes ~15 min; a stuck one must not keep the bill running
 
 app = modal.App("codemesh")
 models_vol = modal.Volume.from_name("codemesh-models", create_if_missing=True)
@@ -138,6 +140,8 @@ class GeometryWorker:
 @modal.concurrent(max_inputs=32)
 @modal.asgi_app()
 def web():
+    import threading
+
     from fastapi.staticfiles import StaticFiles
 
     from codemesh.main import create_app
@@ -145,7 +149,32 @@ def web():
     api = create_app(max_upload_bytes=MAX_UPLOAD_BYTES)
     if Path("/app/dist").exists():
         api.mount("/", StaticFiles(directory="/app/dist", html=True), name="ui")  # after /api routes
+    threading.Thread(target=keep_alive_while_busy, args=(api,), name="keep-alive", daemon=True).start()
     return api
+
+
+def keep_alive_while_busy(api) -> None:
+    """Modal stops a container that receives no requests for scaledown_window, even mid-job: the job
+    runner thread is not an input. While a job is queued or running, request our own URL once a minute
+    so a job finishes after the user closes the tab. Idle -> no pings -> the container scales to zero."""
+    import urllib.request
+
+    url = None
+    busy_ticks = 0
+    while True:
+        time.sleep(KEEPALIVE_SECONDS)
+        runner = getattr(api.state, "runner", None)  # created in the app lifespan
+        if runner is None or not runner.active():
+            busy_ticks = 0
+            continue
+        busy_ticks += 1
+        if busy_ticks * KEEPALIVE_SECONDS > KEEPALIVE_MAX_MINUTES * 60:
+            continue  # let Modal stop the container; the stuck job is marked failed on restart
+        try:
+            url = url or web.get_web_url().rstrip("/") + "/api/health"
+            urllib.request.urlopen(url, timeout=30).read()
+        except Exception as exc:  # noqa: BLE001 - a failed ping only risks an early scale-down
+            print(f"keep-alive ping failed: {exc}")
 
 
 @app.local_entrypoint()
